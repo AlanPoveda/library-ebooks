@@ -1,6 +1,5 @@
 // Drag-and-drop de PDF (#22) + seleção de idioma/formato e envio pro
-// /convert (#23). O endpoint de download dos arquivos gerados (#24)
-// ainda não existe, então o resultado por enquanto é só texto.
+// /convert (#23) + links de download dos arquivos gerados (#24).
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("file-input");
@@ -73,9 +72,11 @@ optionsForm.addEventListener("submit", async (event) => {
       return;
     }
 
-    resultDiv.textContent = data.azw3
-      ? `Conversão concluída: ${data.epub} e ${data.azw3}`
-      : `Conversão concluída: ${data.epub}`;
+    let html = `Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
+    if (data.azw3_url) {
+      html += ` e <a href="${data.azw3_url}" download>${data.azw3}</a>`;
+    }
+    resultDiv.innerHTML = html;
   } catch (error) {
     resultDiv.textContent = `Erro: ${error.message}`;
   }

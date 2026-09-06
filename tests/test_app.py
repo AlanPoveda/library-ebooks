@@ -38,7 +38,10 @@ def test_upload_pdf_triggers_pipeline_and_returns_result(monkeypatch, client, tm
     )
 
     assert response.status_code == 200
-    assert response.json() == {"epub": "livro.epub", "azw3": None}
+    data = response.json()
+    assert data["epub"] == "livro.epub"
+    assert data["azw3"] is None
+    # data["epub_url"]/data["azw3_url"] são cobertos pela história #24
     assert calls == [("livro.pdf", {"book_lang": "pt", "translate_to": None, "generate_azw3": False})]
 
 
@@ -135,6 +138,75 @@ def test_app_js_submits_selected_options_to_convert_endpoint(client):
     assert "book-lang" in body
     assert "translate-to" in body
     assert "generate-azw3" in body
+
+
+# Testes da história #24: endpoint de download dos arquivos gerados.
+
+
+def test_download_serves_existing_file(monkeypatch, client, tmp_path):
+    monkeypatch.setattr("library_ebooks.app.DEFAULT_OUTPUT_DIR", tmp_path)
+    (tmp_path / "livro.epub").write_bytes(b"conteudo do epub")
+
+    response = client.get("/download/livro.epub")
+
+    assert response.status_code == 200
+    assert response.content == b"conteudo do epub"
+    assert "livro.epub" in response.headers["content-disposition"]
+
+
+def test_download_returns_404_for_missing_file(monkeypatch, client, tmp_path):
+    monkeypatch.setattr("library_ebooks.app.DEFAULT_OUTPUT_DIR", tmp_path)
+
+    response = client.get("/download/naoexiste.epub")
+
+    assert response.status_code == 404
+
+
+def test_download_blocks_path_traversal(monkeypatch, client, tmp_path):
+    monkeypatch.setattr("library_ebooks.app.DEFAULT_OUTPUT_DIR", tmp_path)
+    outside_dir = tmp_path.parent / "segredo"
+    outside_dir.mkdir(exist_ok=True)
+    (outside_dir / "secreto.txt").write_text("não devia sair daqui")
+
+    response = client.get("/download/..%2Fsegredo%2Fsecreto.txt")
+
+    assert response.status_code == 404
+
+
+def test_safe_filename_strips_path_components():
+    from library_ebooks.app import _safe_filename
+
+    assert _safe_filename("../../etc/passwd") == "passwd"
+    assert _safe_filename("livro.epub") == "livro.epub"
+
+
+def test_app_js_renders_download_links():
+    from library_ebooks.app import _STATIC_DIR
+
+    body = (_STATIC_DIR / "app.js").read_text()
+    assert "epub_url" in body
+    assert "azw3_url" in body
+    assert "download" in body
+
+
+def test_convert_response_includes_download_urls(monkeypatch, client, tmp_path):
+    def _fake_convert_book(pdf_path, **kwargs):
+        epub_path = tmp_path / "livro.epub"
+        epub_path.write_text("epub final")
+        azw3_path = tmp_path / "livro.azw3"
+        azw3_path.write_text("azw3 final")
+        return ConversionResult(epub_path=epub_path, azw3_path=azw3_path)
+
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
+
+    response = client.post(
+        "/convert",
+        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
+    )
+
+    data = response.json()
+    assert data["epub_url"] == "/download/livro.epub"
+    assert data["azw3_url"] == "/download/livro.azw3"
 
 
 def test_temp_pdf_is_removed_after_request(monkeypatch, client):
