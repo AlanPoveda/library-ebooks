@@ -1,8 +1,11 @@
-"""Testes da história #15: traduzir texto preservando estrutura
-HTML/parágrafos de um EPUB.
+"""Testes das histórias #15 (traduzir texto preservando estrutura
+HTML/parágrafos) e #17 (validar idioma de destino suportado antes de
+traduzir).
 """
 
-from library_ebooks.translate import translate_epub
+import pytest
+
+from library_ebooks.translate import UnsupportedLanguageError, translate_epub
 
 
 def _fake_translate(text, from_code, to_code):
@@ -72,3 +75,19 @@ def test_skips_whitespace_only_nodes(monkeypatch, build_epub, tmp_path):
     translate_epub(input_path, output_path, "en", "pt")
 
     assert calls == ["Hello.", "Bye."]
+
+
+def test_rejects_unsupported_target_language_before_translating(
+    monkeypatch, build_epub, tmp_path
+):
+    def _fail(*args, **kwargs):
+        raise AssertionError("não deveria tentar traduzir com idioma inválido")
+
+    monkeypatch.setattr("library_ebooks.translate.ensure_package_installed", _fail)
+    monkeypatch.setattr("library_ebooks.translate.argos_translate.translate", _fail)
+
+    input_path = build_epub("<html><body><p>Hello.</p></body></html>")
+    output_path = tmp_path / "saida.epub"
+
+    with pytest.raises(UnsupportedLanguageError):
+        translate_epub(input_path, output_path, "en", "fr")

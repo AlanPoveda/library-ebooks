@@ -1,5 +1,6 @@
-"""Testes das histórias #14 (gerenciar pacotes de idioma) e #16 (fallback
-de pivô de idioma, ex: pt->en->es).
+"""Testes das histórias #14 (gerenciar pacotes de idioma), #16 (fallback
+de pivô de idioma, ex: pt->en->es) e #17 (validar idioma de destino
+suportado: es/en/pt).
 """
 
 from types import SimpleNamespace
@@ -8,8 +9,10 @@ import pytest
 
 from library_ebooks.translate import (
     TranslationPackageError,
+    UnsupportedLanguageError,
     ensure_package_installed,
     translate_text,
+    validate_target_language,
 )
 
 
@@ -146,3 +149,16 @@ def test_does_not_pivot_when_pivot_language_is_an_endpoint(monkeypatch):
 
     with pytest.raises(TranslationPackageError, match="pt.*en"):
         translate_text("olá", "pt", "en")
+
+
+# Testes da história #17: validar idioma de destino suportado (es/en/pt).
+
+
+@pytest.mark.parametrize("lang", ["es", "en", "pt"])
+def test_validate_target_language_accepts_supported_languages(lang):
+    assert validate_target_language(lang) == lang
+
+
+def test_validate_target_language_rejects_unsupported():
+    with pytest.raises(UnsupportedLanguageError, match="fr"):
+        validate_target_language("fr")

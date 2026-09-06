@@ -18,6 +18,31 @@ class TranslationPackageError(RuntimeError):
     ser instalado (o par não existe no índice local nem no remoto)."""
 
 
+class UnsupportedLanguageError(ValueError):
+    """Levantado quando um idioma de destino fora dos suportados pelo
+    app (es/en/pt) é pedido."""
+
+
+# Idiomas de destino que o app oferece pro usuário escolher (mesmos do
+# épico de tradução no PLANNING.md). O idioma de origem não é restrito
+# a esses três — é o idioma em que o livro já está escrito.
+SUPPORTED_TARGET_LANGUAGES = frozenset({"es", "en", "pt"})
+
+
+def validate_target_language(lang: str) -> str:
+    """Valida que `lang` é um dos idiomas de destino suportados (es/en/pt).
+
+    Retorna o próprio código se válido; levanta `UnsupportedLanguageError`
+    com uma mensagem acionável caso contrário.
+    """
+    if lang not in SUPPORTED_TARGET_LANGUAGES:
+        raise UnsupportedLanguageError(
+            f"idioma de destino não suportado: {lang!r} "
+            f"(use um de {sorted(SUPPORTED_TARGET_LANGUAGES)})"
+        )
+    return lang
+
+
 def _is_installed(from_code: str, to_code: str) -> bool:
     return any(
         pkg.from_code == from_code and pkg.to_code == to_code
@@ -85,7 +110,12 @@ def translate_epub(
     com espaço em branco são pulados) via `translate_text` — incluindo o
     fallback de pivô de idioma quando não houver par direto — e recoloca
     a tradução no lugar, sem alterar a marcação.
+
+    Levanta `UnsupportedLanguageError` de cara se `to_code` não for um
+    dos idiomas de destino suportados (es/en/pt), antes de tentar
+    instalar qualquer pacote ou traduzir qualquer texto.
     """
+    validate_target_language(to_code)
     return apply_to_epub_text_nodes(
         input_path,
         output_path,
