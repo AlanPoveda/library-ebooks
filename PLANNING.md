@@ -92,6 +92,14 @@ library-ebooks/
   palavra real, evitando juntar hífens que são legítimos (ex: "guarda-chuva").
 - **Não versionar livros**: PDFs/EPUBs reais vão em `books/`, que fica no
   `.gitignore` — só código e fixtures pequenas de teste são versionados.
+- **Aspell tem cobertura fraca de compostos hifenizados em ES/EN**: o
+  backend usado pelo `pyenchant` (aspell) reconhece bem palavras compostas
+  com hífen em pt_BR (ex: "guarda-chuva", "micro-ondas"), mas praticamente
+  não tem entradas assim em es/en (ex: "well-known", "político-militar"
+  não são reconhecidos nem com nem sem hífen). Nesses casos o fallback
+  ingênuo (juntar sem hífen) é usado — comportamento seguro, mas vale
+  reavaliar o backend (hunspell?) se isso se mostrar um problema real com
+  livros em es/en.
 - **LanguageTool precisa de Java**: `language-tool-python` sobe um servidor
   LanguageTool local que roda sobre JRE — precisa checar/documentar essa
   dependência de sistema (assim como o Calibre), com erro claro se não
