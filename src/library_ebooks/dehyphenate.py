@@ -7,20 +7,49 @@ fim da linha ficam com um hífen seguido de quebra de linha, ex.:
 
 import re
 
-# Hífen imediatamente seguido de quebra de linha, com caractere de
-# palavra (letra/dígito/underscore, incluindo acentuados) de cada lado.
-# Hífens sem quebra de linha logo em seguida (ex.: "bom-mas-ruim") não
-# são tocados.
-_BROKEN_WORD_PATTERN = re.compile(r"(?<=\w)-\n(?=\w)", re.UNICODE)
+import enchant
+
+# Hífen imediatamente seguido de quebra de linha, com um "run" de
+# caracteres de palavra (letra/dígito/underscore, incluindo acentuados)
+# de cada lado — é esse run que forma o fragmento da palavra quebrada.
+_BROKEN_WORD_PATTERN = re.compile(r"(\w+)-\n(\w+)", re.UNICODE)
+
+# Códigos de idioma simples usados no resto do app (mesmos do épico de
+# tradução: es/en/pt) mapeados para os códigos de dicionário do enchant.
+_ENCHANT_LANG_MAP = {"pt": "pt_BR", "es": "es", "en": "en_US"}
 
 
-def join_broken_words(text: str) -> str:
+def join_broken_words(text: str, lang: str | None = None) -> str:
     """Junta palavras quebradas por hífen no fim de linha.
 
     Ex.: "informa-\\nção" -> "informação"
 
-    Não faz validação por dicionário (isso fica pra história #7) — só
-    remove o hífen quando ele está imediatamente seguido de quebra de
-    linha entre dois caracteres de palavra.
+    Sem `lang`, apenas junta (comportamento ingênuo da história #6): não
+    distingue hífens de quebra de linha de hífens legítimos.
+
+    Com `lang` ("pt", "es" ou "en"), valida contra o dicionário: se a
+    palavra juntada for válida, junta; se a versão com hífen for uma
+    palavra composta legítima (ex.: "guarda-chuva"), mantém o hífen; se
+    nenhuma das duas for reconhecida, cai no comportamento ingênuo.
     """
-    return _BROKEN_WORD_PATTERN.sub("", text)
+    if lang is None:
+        return _BROKEN_WORD_PATTERN.sub(r"\1\2", text)
+
+    if lang not in _ENCHANT_LANG_MAP:
+        raise ValueError(
+            f"idioma não suportado: {lang!r} (use um de {sorted(_ENCHANT_LANG_MAP)})"
+        )
+
+    dictionary = enchant.Dict(_ENCHANT_LANG_MAP[lang])
+
+    def _resolve(match: re.Match[str]) -> str:
+        prefix, suffix = match.group(1), match.group(2)
+        joined = prefix + suffix
+        hyphenated = f"{prefix}-{suffix}"
+        if dictionary.check(joined):
+            return joined
+        if dictionary.check(hyphenated):
+            return hyphenated
+        return joined
+
+    return _BROKEN_WORD_PATTERN.sub(_resolve, text)
