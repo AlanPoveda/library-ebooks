@@ -1,0 +1,84 @@
+# PLANNING.md
+
+## Objetivo
+
+App web local (drag-and-drop) para converter PDFs em EPUB/AZW3 prontos para
+Kindle e XTEINK, corrigindo a hifenização quebrada que vem da extração de PDF
+e, opcionalmente, traduzindo o livro inteiro para espanhol, inglês ou
+português.
+
+## Decisões de arquitetura
+
+| Decisão | Escolha | Motivo |
+|---|---|---|
+| Tipo de app | Web app local (FastAPI + frontend simples no navegador) | Mais rápido de construir e testar que um app desktop nativo; UX de arrastar arquivo funciona igual num navegador |
+| Motor de conversão PDF→EPUB→AZW3 | Calibre (`ebook-convert`, chamado via subprocess) | Usuário já usa Calibre pra biblioteca; é o motor mais robusto disponível para AZW3 |
+| Motor de tradução | Argos Translate (offline) | Grátis, roda local, sem enviar o conteúdo do livro pra fora |
+| Correção de hifenização | Módulo próprio (regex + validação por dicionário) | Não existe lib pronta boa pra isso, principalmente em PT-BR |
+
+## Pipeline
+
+```
+PDF (upload/drag)
+  │
+  ▼
+[1] ebook-convert pdf → epub_bruto        (Calibre)
+  │
+  ▼
+[2] dehyphenate(epub_bruto) → epub_limpo  (regex + dicionário pt/es/en)
+  │
+  ▼
+[3] translate(epub_limpo, idioma)?        (Argos Translate, opcional)
+  │
+  ▼
+[4] ebook-convert epub_final → azw3       (Calibre)
+  │
+  ▼
+Download: EPUB + AZW3
+```
+
+## Estrutura do repositório
+
+```
+library-ebooks/
+├── CLAUDE.md
+├── PLANNING.md
+├── pyproject.toml
+├── src/
+│   └── library_ebooks/
+│       ├── convert.py       # wrapper do Calibre (ebook-convert)
+│       ├── dehyphenate.py   # limpeza de hifenização
+│       ├── translate.py     # backend Argos Translate
+│       ├── pipeline.py      # orquestra as etapas acima
+│       ├── app.py           # FastAPI: rotas de upload/download
+│       └── static/          # HTML/JS da área de drag-and-drop
+├── tests/
+│   ├── fixtures/            # PDFs/EPUBs pequenos de teste
+│   ├── test_dehyphenate.py
+│   ├── test_convert.py
+│   ├── test_translate.py
+│   └── test_pipeline.py
+└── books/                   # entrada/saída local (gitignored — não versionar ebooks)
+```
+
+## Riscos / pontos de atenção conhecidos
+
+- **Dependência do Calibre**: o app assume `ebook-convert` disponível no
+  PATH do usuário (já é o caso aqui). Se não estiver, falhar com mensagem
+  clara em vez de erro obscuro.
+- **Argos Translate e pares de idioma**: nem todo par (ex: pt→es) tem pacote
+  direto — pode ser necessário traduzir em duas etapas (pt→en→es) quando o
+  par direto não existir.
+- **Dehyphenation**: precisa de dicionários (`pyenchant`/hunspell) para
+  `pt_BR`, `es`, `en` para validar se a junção de duas linhas forma uma
+  palavra real, evitando juntar hífens que são legítimos (ex: "guarda-chuva").
+- **Não versionar livros**: PDFs/EPUBs reais vão em `books/`, que fica no
+  `.gitignore` — só código e fixtures pequenas de teste são versionados.
+
+## Próximos passos (ordem sugerida de implementação em TDD)
+
+1. `dehyphenate.py` — módulo isolado, fácil de testar com casos conhecidos.
+2. `convert.py` — wrapper fino do `ebook-convert`, testado com PDF/EPUB de fixture.
+3. `translate.py` — wrapper do Argos Translate, com fallback de pivô de idioma.
+4. `pipeline.py` — junta as três etapas.
+5. `app.py` + frontend — interface de drag-and-drop por cima do pipeline já testado.
