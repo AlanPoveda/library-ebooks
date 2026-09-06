@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Library Ebooks</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <h1>Library Ebooks</h1>
+  <p>Converte PDF em EPUB, corrige hifenização, traduz e revisa gramática.</p>
+
+  <div id="dropzone">
+    <p>Arraste um PDF aqui, ou <button type="button" id="browse-button">escolha um arquivo</button></p>
+    <input type="file" id="file-input" accept=".pdf" hidden />
+    <p id="selected-file"></p>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

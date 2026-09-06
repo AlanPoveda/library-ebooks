@@ -8,10 +8,13 @@ import tempfile
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.staticfiles import StaticFiles
 
 from .pipeline import PipelineStepError, convert_book
 
 app = FastAPI(title="Library Ebooks")
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 
 @app.post("/convert")
@@ -49,3 +52,8 @@ async def convert(
         "epub": result.epub_path.name,
         "azw3": result.azw3_path.name if result.azw3_path else None,
     }
+
+
+# Frontend estático (index.html com a área de drag-and-drop, app.js,
+# style.css). Montado por último pra não sombrear a rota /convert acima.
+app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

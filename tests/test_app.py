@@ -86,6 +86,30 @@ def test_returns_400_when_pipeline_rejects_input(monkeypatch, client):
     assert response.status_code == 400
 
 
+# Testes da história #22: frontend com área de drag-and-drop.
+
+
+def test_index_page_serves_html_with_dropzone(client):
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    body = response.text
+    assert 'id="dropzone"' in body
+    assert 'accept=".pdf"' in body
+    assert "app.js" in body
+
+
+def test_static_js_is_served_and_wires_drag_and_drop_events(client):
+    response = client.get("/app.js")
+
+    assert response.status_code == 200
+    body = response.text
+    assert "dragover" in body
+    assert "drop" in body
+    assert "dropzone" in body
+
+
 def test_temp_pdf_is_removed_after_request(monkeypatch, client):
     captured_path = {}
 
