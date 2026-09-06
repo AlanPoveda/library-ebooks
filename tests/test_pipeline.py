@@ -114,3 +114,39 @@ def test_raises_when_translate_requested_without_book_lang(mocked_steps, tmp_pat
         convert_book(pdf_path, tmp_path, translate_to="es")
 
     assert mocked_steps == []  # não deve rodar nenhuma etapa
+
+
+# Testes da história #19: gerenciamento de arquivos temporários e pasta books/.
+
+
+def test_uses_books_dir_by_default_when_output_dir_not_given(mocked_steps, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, book_lang="pt")
+
+    assert result.epub_path.resolve() == tmp_path / "books" / "livro.epub"
+    assert result.epub_path.exists()
+
+
+def test_removes_untranslated_intermediate_epub_when_translated(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", translate_to="es")
+
+    clean_epub_path = tmp_path / "livro.epub"
+    assert not clean_epub_path.exists()  # era só intermediário pra chegar na tradução
+    assert result.epub_path == tmp_path / "livro.es.epub"
+    assert result.epub_path.exists()
+
+
+def test_keeps_final_epub_when_azw3_is_also_generated(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", generate_azw3=True)
+
+    assert result.epub_path.exists()
+    assert result.azw3_path.exists()

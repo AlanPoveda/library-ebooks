@@ -13,6 +13,10 @@ from .convert import convert_epub_to_azw3, convert_pdf_to_epub
 from .dehyphenate import dehyphenate_epub
 from .translate import translate_epub
 
+# Local padrão de entrada/saída quando o chamador não passa output_dir
+# explícito — ver PLANNING.md (pasta gitignored, não versiona ebooks).
+DEFAULT_OUTPUT_DIR = Path("books")
+
 
 @dataclass
 class ConversionResult:
@@ -24,7 +28,7 @@ class ConversionResult:
 
 def convert_book(
     pdf_path: str | Path,
-    output_dir: str | Path,
+    output_dir: str | Path | None = None,
     *,
     book_lang: str | None = None,
     translate_to: str | None = None,
@@ -32,11 +36,18 @@ def convert_book(
 ) -> ConversionResult:
     """Roda o pipeline completo sobre um PDF e retorna os arquivos finais.
 
-    `book_lang` é o idioma em que o livro já está escrito — usado tanto
-    pra validação por dicionário na correção de hifenização quanto como
-    idioma de origem se `translate_to` for passado (nesse caso é
-    obrigatório). `translate_to` deve ser um dos idiomas de destino
-    suportados (es/en/pt) — validado dentro de `translate_epub`.
+    `output_dir` default pra `books/` (relativo ao diretório de trabalho)
+    quando não informado. `book_lang` é o idioma em que o livro já está
+    escrito — usado tanto pra validação por dicionário na correção de
+    hifenização quanto como idioma de origem se `translate_to` for
+    passado (nesse caso é obrigatório). `translate_to` deve ser um dos
+    idiomas de destino suportados (es/en/pt) — validado dentro de
+    `translate_epub`.
+
+    Arquivos puramente intermediários (o EPUB "bruto" recém-saído do
+    Calibre, e o EPUB "limpo" pré-tradução quando há tradução) são
+    apagados ao longo do processo — só os arquivos finais (EPUB e,
+    opcionalmente, AZW3) permanecem em `output_dir`.
     """
     if translate_to is not None and book_lang is None:
         raise ValueError(
@@ -45,7 +56,7 @@ def convert_book(
         )
 
     pdf_path = Path(pdf_path)
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir) if output_dir is not None else DEFAULT_OUTPUT_DIR
     output_dir.mkdir(parents=True, exist_ok=True)
     stem = pdf_path.stem
 
@@ -60,6 +71,7 @@ def convert_book(
     if translate_to is not None:
         translated_path = output_dir / f"{stem}.{translate_to}.epub"
         translate_epub(clean_epub_path, translated_path, book_lang, translate_to)
+        clean_epub_path.unlink()  # era só intermediário pra chegar na tradução
         final_epub_path = translated_path
 
     azw3_path = None
