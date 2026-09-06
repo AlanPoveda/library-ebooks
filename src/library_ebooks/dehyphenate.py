@@ -9,8 +9,8 @@ import re
 from pathlib import Path
 
 import enchant
-from bs4 import BeautifulSoup, NavigableString
-from ebooklib import ITEM_DOCUMENT, epub
+
+from .epub_utils import apply_to_epub_text_nodes
 
 # Hífen imediatamente seguido de quebra de linha, com um "run" de
 # caracteres de palavra (letra/dígito/underscore, incluindo acentuados)
@@ -67,27 +67,6 @@ def dehyphenate_epub(
     hifenização apenas dentro dos nós de texto, sem tocar nas tags ao
     redor — formatação (negrito, itálico etc.) é preservada.
     """
-    book = epub.read_epub(str(input_path))
-
-    for item in book.get_items_of_type(ITEM_DOCUMENT):
-        soup = BeautifulSoup(item.get_content(), "html.parser")
-        for node in soup.find_all(string=True):
-            if not isinstance(node, NavigableString):
-                continue
-            fixed_text = join_broken_words(str(node), lang=lang)
-            if fixed_text != str(node):
-                node.replace_with(fixed_text)
-        item.set_content(str(soup).encode("utf-8"))
-
-    # Workaround para uma limitação do ebooklib: ao ler um EPUB, o TOC vem
-    # como objetos `Link` sem `uid`, o que quebra a regeneração do NCX na
-    # escrita. Reconstruímos o TOC a partir dos próprios documentos (que
-    # têm id válido), achatando qualquer hierarquia de seções que houvesse.
-    book.toc = tuple(
-        item
-        for item in book.get_items_of_type(ITEM_DOCUMENT)
-        if item.file_name != "nav.xhtml"
+    return apply_to_epub_text_nodes(
+        input_path, output_path, lambda text: join_broken_words(text, lang=lang)
     )
-
-    epub.write_epub(str(output_path), book)
-    return Path(output_path)

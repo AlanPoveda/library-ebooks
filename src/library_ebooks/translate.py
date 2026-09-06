@@ -5,7 +5,12 @@ uma vez (na primeira vez que um par é usado) e ficam instalados na
 máquina, sem depender de chamadas externas depois disso.
 """
 
+from pathlib import Path
+
 import argostranslate.package as argos_package
+import argostranslate.translate as argos_translate
+
+from .epub_utils import apply_to_epub_text_nodes
 
 
 class TranslationPackageError(RuntimeError):
@@ -37,3 +42,23 @@ def ensure_package_installed(from_code: str, to_code: str) -> None:
             f"Não existe pacote de tradução direto de {from_code!r} para "
             f"{to_code!r} no Argos Translate."
         )
+
+
+def translate_epub(
+    input_path: str | Path,
+    output_path: str | Path,
+    from_code: str,
+    to_code: str,
+) -> Path:
+    """Traduz todo o texto de um EPUB, preservando tags e estrutura HTML.
+
+    Garante o pacote de idioma instalado, depois percorre os documentos
+    internos traduzindo cada nó de texto (nós só com espaço em branco são
+    pulados) e recolocando a tradução no lugar, sem alterar a marcação.
+    """
+    ensure_package_installed(from_code, to_code)
+    return apply_to_epub_text_nodes(
+        input_path,
+        output_path,
+        lambda text: argos_translate.translate(text, from_code, to_code),
+    )
