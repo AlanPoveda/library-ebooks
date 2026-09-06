@@ -45,7 +45,16 @@ class PipelineStepError(RuntimeError):
         super().__init__(f"Falha na etapa '{step}': {original}")
 
 
-def _run_step(step: str, description: str, func: Callable, *args, **kwargs):
+def _run_step(
+    step: str,
+    description: str,
+    func: Callable,
+    *args,
+    on_progress: Callable[[str], None] | None = None,
+    **kwargs,
+):
+    if on_progress is not None:
+        on_progress(step)
     logger.info("%s...", description)
     try:
         result = func(*args, **kwargs)
@@ -63,6 +72,7 @@ def convert_book(
     book_lang: str | None = None,
     translate_to: str | None = None,
     generate_azw3: bool = False,
+    on_progress: Callable[[str], None] | None = None,
 ) -> ConversionResult:
     """Roda o pipeline completo sobre um PDF e retorna os arquivos finais.
 
@@ -73,6 +83,11 @@ def convert_book(
     passado (nesse caso é obrigatório). `translate_to` deve ser um dos
     idiomas de destino suportados (es/en/pt) — validado dentro de
     `translate_epub`.
+
+    `on_progress`, se passado, é chamado com o nome de cada etapa
+    ("pdf_to_epub", "dehyphenate", "translate", "epub_to_azw3") no
+    instante em que ela começa a rodar — pro chamador (ex.: o app web)
+    reportar progresso em tempo real.
 
     Arquivos puramente intermediários (o EPUB "bruto" recém-saído do
     Calibre, e o EPUB "limpo" pré-tradução quando há tradução) são
@@ -97,6 +112,7 @@ def convert_book(
         convert_pdf_to_epub,
         pdf_path,
         raw_epub_path,
+        on_progress=on_progress,
     )
 
     clean_epub_path = output_dir / f"{stem}.epub"
@@ -107,6 +123,7 @@ def convert_book(
         raw_epub_path,
         clean_epub_path,
         lang=book_lang,
+        on_progress=on_progress,
     )
     raw_epub_path.unlink()
 
@@ -121,6 +138,7 @@ def convert_book(
             translated_path,
             book_lang,
             translate_to,
+            on_progress=on_progress,
         )
         clean_epub_path.unlink()  # era só intermediário pra chegar na tradução
         final_epub_path = translated_path
@@ -134,6 +152,7 @@ def convert_book(
             convert_epub_to_azw3,
             final_epub_path,
             azw3_path,
+            on_progress=on_progress,
         )
 
     return ConversionResult(epub_path=final_epub_path, azw3_path=azw3_path)

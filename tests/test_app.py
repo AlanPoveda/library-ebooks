@@ -1,9 +1,11 @@
-"""Testes da história #21: servidor FastAPI com rota de upload de PDF.
+"""Testes das histórias #21-#25 do épico App Web.
 
-O endpoint recebe o PDF arrastado, salva em local temporário e dispara
-o pipeline (mockado aqui — cada etapa já tem sua própria suíte).
+#21 upload de PDF, #22 drag-and-drop, #23 seleção de idioma/formato,
+#24 download dos arquivos gerados, #25 feedback de progresso (a razão
+de /convert virar um job em background + polling em /progress/{id}).
 """
 
+import time
 from pathlib import Path
 
 import pytest
@@ -18,31 +20,103 @@ def client():
     return TestClient(app)
 
 
-def test_upload_pdf_triggers_pipeline_and_returns_result(monkeypatch, client, tmp_path):
-    calls = []
+def _wait_for_done(client, job_id, timeout=2.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        data = client.get(f"/progress/{job_id}").json()
+        if data["done"]:
+            return data
+        time.sleep(0.01)
+    raise AssertionError(f"job {job_id} não terminou em {timeout}s")
 
+
+def _post_pdf(client, **form_data):
+    return client.post(
+        "/convert",
+        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
+        data=form_data,
+    )
+
+
+# Testes das histórias #21 e #25: upload dispara um job em background,
+# reportado via GET /progress/{job_id}.
+
+
+def test_upload_pdf_returns_a_job_id(monkeypatch, client, tmp_path):
     def _fake_convert_book(pdf_path, **kwargs):
-        calls.append((Path(pdf_path).name, kwargs))
-        # o PDF enviado deve existir num arquivo temporário até esse ponto
-        assert Path(pdf_path).exists()
         epub_path = tmp_path / "livro.epub"
         epub_path.write_text("epub final")
         return ConversionResult(epub_path=epub_path, azw3_path=None)
 
     monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
 
-    response = client.post(
-        "/convert",
-        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
-        data={"book_lang": "pt"},
-    )
+    response = _post_pdf(client, book_lang="pt")
 
-    assert response.status_code == 200
-    data = response.json()
+    assert response.status_code == 202
+    assert isinstance(response.json()["job_id"], str)
+
+
+def test_progress_reports_intermediate_steps_and_completion(monkeypatch, client, tmp_path):
+    def _fake_convert_book(pdf_path, on_progress=None, **kwargs):
+        for step in ("pdf_to_epub", "dehyphenate"):
+            if on_progress:
+                on_progress(step)
+            time.sleep(0.05)  # dá tempo do teste observar um estado intermediário
+        epub_path = tmp_path / "livro.epub"
+        epub_path.write_text("epub final")
+        return ConversionResult(epub_path=epub_path, azw3_path=None)
+
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
+
+    job_id = _post_pdf(client, book_lang="pt").json()["job_id"]
+
+    observed_steps = set()
+    deadline = time.monotonic() + 2.0
+    while time.monotonic() < deadline:
+        data = client.get(f"/progress/{job_id}").json()
+        observed_steps.add(data["step"])
+        if data["done"]:
+            break
+        time.sleep(0.01)
+
+    assert "done" in observed_steps
+    assert observed_steps & {"pdf_to_epub", "dehyphenate"}  # pelo menos uma etapa capturada
     assert data["epub"] == "livro.epub"
+    assert data["epub_url"] == "/download/livro.epub"
     assert data["azw3"] is None
-    # data["epub_url"]/data["azw3_url"] são cobertos pela história #24
-    assert calls == [("livro.pdf", {"book_lang": "pt", "translate_to": None, "generate_azw3": False})]
+
+
+def test_progress_reports_pipeline_step_error(monkeypatch, client):
+    def _fake_convert_book(pdf_path, on_progress=None, **kwargs):
+        raise PipelineStepError("pdf_to_epub", RuntimeError("calibre não encontrado"))
+
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
+
+    job_id = _post_pdf(client).json()["job_id"]
+    data = _wait_for_done(client, job_id)
+
+    assert data["step"] == "error"
+    assert data["status_code"] == 422
+    assert "pdf_to_epub" in data["detail"]
+
+
+def test_progress_reports_value_error_as_400(monkeypatch, client):
+    def _fake_convert_book(pdf_path, on_progress=None, **kwargs):
+        raise ValueError("book_lang é obrigatório quando translate_to é usado")
+
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
+
+    job_id = _post_pdf(client, translate_to="es").json()["job_id"]
+    data = _wait_for_done(client, job_id)
+
+    assert data["step"] == "error"
+    assert data["status_code"] == 400
+
+
+def test_progress_returns_404_for_unknown_job(client):
+    response = client.get("/progress/nao-existe")
+
+    assert response.status_code == 404
 
 
 def test_rejects_non_pdf_upload(monkeypatch, client):
@@ -59,34 +133,19 @@ def test_rejects_non_pdf_upload(monkeypatch, client):
     assert response.status_code == 400
 
 
-def test_returns_422_when_pipeline_step_fails(monkeypatch, client):
-    def _fail(pdf_path, **kwargs):
-        raise PipelineStepError("pdf_to_epub", RuntimeError("calibre não encontrado"))
+def test_temp_pdf_is_removed_after_job_finishes(monkeypatch, client):
+    captured_path = {}
 
-    monkeypatch.setattr("library_ebooks.app.convert_book", _fail)
+    def _fake_convert_book(pdf_path, on_progress=None, **kwargs):
+        captured_path["path"] = Path(pdf_path)
+        raise PipelineStepError("pdf_to_epub", RuntimeError("boom"))
 
-    response = client.post(
-        "/convert",
-        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
-    )
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
 
-    assert response.status_code == 422
-    assert "pdf_to_epub" in response.json()["detail"]
+    job_id = _post_pdf(client).json()["job_id"]
+    _wait_for_done(client, job_id)
 
-
-def test_returns_400_when_pipeline_rejects_input(monkeypatch, client):
-    def _fail(pdf_path, **kwargs):
-        raise ValueError("book_lang é obrigatório quando translate_to é usado")
-
-    monkeypatch.setattr("library_ebooks.app.convert_book", _fail)
-
-    response = client.post(
-        "/convert",
-        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
-        data={"translate_to": "es"},
-    )
-
-    assert response.status_code == 400
+    assert not captured_path["path"].exists()
 
 
 # Testes da história #22: frontend com área de drag-and-drop.
@@ -189,38 +248,17 @@ def test_app_js_renders_download_links():
     assert "download" in body
 
 
-def test_convert_response_includes_download_urls(monkeypatch, client, tmp_path):
-    def _fake_convert_book(pdf_path, **kwargs):
-        epub_path = tmp_path / "livro.epub"
-        epub_path.write_text("epub final")
-        azw3_path = tmp_path / "livro.azw3"
-        azw3_path.write_text("azw3 final")
-        return ConversionResult(epub_path=epub_path, azw3_path=azw3_path)
-
-    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
-
-    response = client.post(
-        "/convert",
-        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
-    )
-
-    data = response.json()
-    assert data["epub_url"] == "/download/livro.epub"
-    assert data["azw3_url"] == "/download/livro.azw3"
+# Testes da história #25: feedback de progresso na UI.
 
 
-def test_temp_pdf_is_removed_after_request(monkeypatch, client):
-    captured_path = {}
+def test_index_page_has_progress_indicator(client):
+    body = client.get("/").text
 
-    def _fake_convert_book(pdf_path, **kwargs):
-        captured_path["path"] = Path(pdf_path)
-        raise PipelineStepError("pdf_to_epub", RuntimeError("boom"))
+    assert 'id="progress"' in body
 
-    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
 
-    client.post(
-        "/convert",
-        files={"file": ("livro.pdf", "%PDF-1.4 conteúdo fake".encode(), "application/pdf")},
-    )
+def test_app_js_polls_progress_endpoint(client):
+    body = (Path(__file__).parent.parent / "src/library_ebooks/static/app.js").read_text()
 
-    assert not captured_path["path"].exists()
+    assert "/progress/" in body
+    assert "job_id" in body

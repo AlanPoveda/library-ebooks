@@ -5,6 +5,8 @@ depender de nenhum serviço externo.
 """
 
 import tempfile
+import threading
+import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -17,44 +19,96 @@ app = FastAPI(title="Library Ebooks")
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
+# Estado dos jobs de conversão em andamento, pra história #25 (feedback
+# de progresso): o app é local/single-user, então um dict em memória
+# (sem persistência) é suficiente — não sobrevive a um restart do
+# processo, o que é aceitável aqui.
+_jobs: dict[str, dict] = {}
 
-@app.post("/convert")
+
+def _run_conversion_job(job_id: str, pdf_bytes: bytes, filename: str, **pipeline_kwargs):
+    """Roda o pipeline numa thread separada, atualizando `_jobs[job_id]`
+    a cada etapa — é isso que permite ao GET /progress/{job_id} reportar
+    em qual etapa o processamento está enquanto ele roda."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        pdf_path = Path(tmp_dir) / filename
+        pdf_path.write_bytes(pdf_bytes)
+
+        def _on_progress(step: str):
+            _jobs[job_id] = {"step": step, "done": False}
+
+        try:
+            result = convert_book(pdf_path, on_progress=_on_progress, **pipeline_kwargs)
+        except PipelineStepError as exc:
+            _jobs[job_id] = {
+                "step": "error",
+                "done": True,
+                "status_code": 422,
+                "detail": str(exc),
+            }
+            return
+        except ValueError as exc:
+            _jobs[job_id] = {
+                "step": "error",
+                "done": True,
+                "status_code": 400,
+                "detail": str(exc),
+            }
+            return
+
+    _jobs[job_id] = {
+        "step": "done",
+        "done": True,
+        "epub": result.epub_path.name,
+        "epub_url": f"/download/{result.epub_path.name}",
+        "azw3": result.azw3_path.name if result.azw3_path else None,
+        "azw3_url": f"/download/{result.azw3_path.name}" if result.azw3_path else None,
+    }
+
+
+@app.post("/convert", status_code=202)
 async def convert(
     file: UploadFile = File(...),
     book_lang: str | None = Form(None),
     translate_to: str | None = Form(None),
     generate_azw3: bool = Form(False),
 ):
-    """Recebe um PDF, salva num diretório temporário e roda o pipeline.
+    """Recebe um PDF e dispara o pipeline em background.
 
-    O PDF enviado é apagado ao final da requisição (sucesso ou erro) —
-    só os arquivos finais gerados pelo pipeline (em `books/`) persistem.
+    Retorna de cara um `job_id` — o progresso e o resultado final são
+    consultados via `GET /progress/{job_id}` (história #25). O PDF
+    enviado é lido aqui e salvo num diretório temporário só dentro da
+    thread do job, apagado ao final (sucesso ou erro).
     """
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="envie um arquivo PDF (.pdf)")
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        pdf_path = Path(tmp_dir) / file.filename
-        pdf_path.write_bytes(await file.read())
+    pdf_bytes = await file.read()
+    job_id = uuid.uuid4().hex
+    _jobs[job_id] = {"step": "queued", "done": False}
 
-        try:
-            result = convert_book(
-                pdf_path,
-                book_lang=book_lang,
-                translate_to=translate_to,
-                generate_azw3=generate_azw3,
-            )
-        except PipelineStepError as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+    thread = threading.Thread(
+        target=_run_conversion_job,
+        args=(job_id, pdf_bytes, file.filename),
+        kwargs={
+            "book_lang": book_lang,
+            "translate_to": translate_to,
+            "generate_azw3": generate_azw3,
+        },
+        daemon=True,
+    )
+    thread.start()
 
-    return {
-        "epub": result.epub_path.name,
-        "epub_url": f"/download/{result.epub_path.name}",
-        "azw3": result.azw3_path.name if result.azw3_path else None,
-        "azw3_url": f"/download/{result.azw3_path.name}" if result.azw3_path else None,
-    }
+    return {"job_id": job_id}
+
+
+@app.get("/progress/{job_id}")
+async def progress(job_id: str):
+    """Estado atual de um job de conversão (ver `_run_conversion_job`)."""
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job não encontrado")
+    return job
 
 
 def _safe_filename(filename: str) -> str:

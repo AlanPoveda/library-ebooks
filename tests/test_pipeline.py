@@ -256,3 +256,41 @@ def test_logs_error_when_a_step_fails(mocked_steps, monkeypatch, tmp_path, caplo
 
     assert any(record.levelno == logging.ERROR for record in caplog.records)
     assert "pdf_to_epub" in " ".join(caplog.messages)
+
+
+# Testes da história #25: reportar progresso (qual etapa está rodando) via
+# um callback opcional, pra quem chama o pipeline (o app web) poder exibir.
+
+
+def test_on_progress_is_called_for_each_step_in_default_run(mocked_steps, tmp_path):
+    progress = []
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(pdf_path, tmp_path, book_lang="pt", on_progress=progress.append)
+
+    assert progress == ["pdf_to_epub", "dehyphenate"]
+
+
+def test_on_progress_includes_translate_and_azw3_when_requested(mocked_steps, tmp_path):
+    progress = []
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(
+        pdf_path,
+        tmp_path,
+        book_lang="pt",
+        translate_to="es",
+        generate_azw3=True,
+        on_progress=progress.append,
+    )
+
+    assert progress == ["pdf_to_epub", "dehyphenate", "translate", "epub_to_azw3"]
+
+
+def test_on_progress_is_optional(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(pdf_path, tmp_path, book_lang="pt")  # não deve levantar sem on_progress

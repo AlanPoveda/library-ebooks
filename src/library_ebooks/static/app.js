@@ -1,5 +1,14 @@
-// Drag-and-drop de PDF (#22) + seleção de idioma/formato e envio pro
-// /convert (#23) + links de download dos arquivos gerados (#24).
+// Drag-and-drop de PDF (#22) + seleção de idioma/formato (#23) + envio
+// pro /convert com polling de progresso via /progress/{job_id} (#25) +
+// links de download dos arquivos gerados (#24).
+
+const STEP_LABELS = {
+  queued: "Na fila...",
+  pdf_to_epub: "Convertendo PDF para EPUB...",
+  dehyphenate: "Corrigindo hifenização...",
+  translate: "Traduzindo...",
+  epub_to_azw3: "Gerando AZW3...",
+};
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("file-input");
@@ -9,6 +18,7 @@ const optionsForm = document.getElementById("options-form");
 const bookLangSelect = document.getElementById("book-lang");
 const translateToSelect = document.getElementById("translate-to");
 const generateAzw3Checkbox = document.getElementById("generate-azw3");
+const progressEl = document.getElementById("progress");
 const resultDiv = document.getElementById("result");
 
 function showSelectedFile(file) {
@@ -42,6 +52,37 @@ dropzone.addEventListener("drop", (event) => {
   }
 });
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollProgress(jobId) {
+  while (true) {
+    const response = await fetch(`/progress/${jobId}`);
+    const data = await response.json();
+
+    if (!data.done) {
+      progressEl.textContent = STEP_LABELS[data.step] || data.step;
+      await sleep(500);
+      continue;
+    }
+
+    progressEl.textContent = "";
+
+    if (data.step === "error") {
+      resultDiv.textContent = `Erro: ${data.detail}`;
+      return;
+    }
+
+    let html = `Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
+    if (data.azw3_url) {
+      html += ` e <a href="${data.azw3_url}" download>${data.azw3}</a>`;
+    }
+    resultDiv.innerHTML = html;
+    return;
+  }
+}
+
 optionsForm.addEventListener("submit", async (event) => {
   event.preventDefault();
 
@@ -61,23 +102,22 @@ optionsForm.addEventListener("submit", async (event) => {
   }
   formData.append("generate_azw3", generateAzw3Checkbox.checked);
 
-  resultDiv.textContent = "Convertendo...";
+  resultDiv.textContent = "";
+  progressEl.textContent = "Enviando...";
 
   try {
     const response = await fetch("/convert", { method: "POST", body: formData });
     const data = await response.json();
 
     if (!response.ok) {
+      progressEl.textContent = "";
       resultDiv.textContent = `Erro: ${data.detail}`;
       return;
     }
 
-    let html = `Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
-    if (data.azw3_url) {
-      html += ` e <a href="${data.azw3_url}" download>${data.azw3}</a>`;
-    }
-    resultDiv.innerHTML = html;
+    await pollProgress(data.job_id);
   } catch (error) {
+    progressEl.textContent = "";
     resultDiv.textContent = `Erro: ${error.message}`;
   }
 });
