@@ -2,17 +2,25 @@
 
 ## Objetivo
 
-App web local (drag-and-drop) para converter PDFs em EPUB/AZW3 prontos para
-Kindle e XTEINK, corrigindo a hifenização quebrada que vem da extração de PDF
-e, opcionalmente, traduzindo o livro inteiro para espanhol, inglês ou
+App web local (drag-and-drop) para converter PDFs em EPUB, corrigindo a
+hifenização quebrada que vem da extração de PDF, revisando gramática e,
+opcionalmente, traduzindo o livro inteiro para espanhol, inglês ou
 português.
+
+**Escopo do app**: converter → traduzir (opcional) → revisar gramática
+(opcional) → disponibilizar para download. O app não se responsabiliza por
+levar o arquivo até o Kindle/XTEINK — isso fica a critério do usuário
+(email, cabo, Send-to-Kindle etc.). EPUB é o formato principal de saída;
+AZW3 é oferecido como **opção adicional no momento do download**, gerado
+via Calibre quando disponível, mas não é o foco do app.
 
 ## Decisões de arquitetura
 
 | Decisão | Escolha | Motivo |
 |---|---|---|
 | Tipo de app | Web app local (FastAPI + frontend simples no navegador) | Mais rápido de construir e testar que um app desktop nativo; UX de arrastar arquivo funciona igual num navegador |
-| Motor de conversão PDF→EPUB→AZW3 | Calibre (`ebook-convert`, chamado via subprocess) | Usuário já usa Calibre pra biblioteca; é o motor mais robusto disponível para AZW3 |
+| Motor de conversão PDF→EPUB | Calibre (`ebook-convert`, chamado via subprocess) | Usuário já usa Calibre pra biblioteca; é o motor mais robusto disponível |
+| Formato AZW3 | Opcional, gerado via Calibre só se o usuário escolher no download | App não assume responsabilidade de "chegar" no Kindle — isso é decisão do usuário |
 | Motor de tradução | Argos Translate (offline) | Grátis, roda local, sem enviar o conteúdo do livro pra fora |
 | Correção de hifenização | Módulo próprio (regex + validação por dicionário) | Não existe lib pronta boa pra isso, principalmente em PT-BR |
 | Verificação gramatical/estilo | LanguageTool local (`language-tool-python`) | Padrão open-source pra lint gramatical (concordância, crase, pontuação); roda servidor local, texto não sai da máquina |
