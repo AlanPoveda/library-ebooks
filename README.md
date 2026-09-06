@@ -28,3 +28,12 @@ pip install -e ".[dev]"
 ```bash
 pytest
 ```
+
+## Rodar o app
+
+```bash
+uvicorn library_ebooks.app:app --reload
+```
+
+Por enquanto só existe a rota `POST /convert` (upload de PDF, sem
+interface ainda — vem nas próximas histórias do épico App Web).
