@@ -44,6 +44,35 @@ def ensure_package_installed(from_code: str, to_code: str) -> None:
         )
 
 
+_PIVOT_LANG = "en"
+
+
+def translate_text(
+    text: str, from_code: str, to_code: str, pivot_code: str = _PIVOT_LANG
+) -> str:
+    """Traduz um texto, com fallback de pivô de idioma.
+
+    Tenta o par direto primeiro; se não existir pacote pra ele, tenta
+    traduzir em duas etapas passando pelo `pivot_code` (inglês por
+    padrão) — ex.: pt->es vira pt->en->es quando pt->es não existe.
+
+    Levanta `TranslationPackageError` se nem o par direto nem as duas
+    etapas do pivô estiverem disponíveis, ou se um dos dois idiomas já
+    for o próprio pivô (nesse caso não há fallback possível).
+    """
+    try:
+        ensure_package_installed(from_code, to_code)
+    except TranslationPackageError:
+        if pivot_code in (from_code, to_code):
+            raise
+        ensure_package_installed(from_code, pivot_code)
+        ensure_package_installed(pivot_code, to_code)
+        intermediate = argos_translate.translate(text, from_code, pivot_code)
+        return argos_translate.translate(intermediate, pivot_code, to_code)
+
+    return argos_translate.translate(text, from_code, to_code)
+
+
 def translate_epub(
     input_path: str | Path,
     output_path: str | Path,
@@ -52,13 +81,13 @@ def translate_epub(
 ) -> Path:
     """Traduz todo o texto de um EPUB, preservando tags e estrutura HTML.
 
-    Garante o pacote de idioma instalado, depois percorre os documentos
-    internos traduzindo cada nó de texto (nós só com espaço em branco são
-    pulados) e recolocando a tradução no lugar, sem alterar a marcação.
+    Percorre os documentos internos traduzindo cada nó de texto (nós só
+    com espaço em branco são pulados) via `translate_text` — incluindo o
+    fallback de pivô de idioma quando não houver par direto — e recoloca
+    a tradução no lugar, sem alterar a marcação.
     """
-    ensure_package_installed(from_code, to_code)
     return apply_to_epub_text_nodes(
         input_path,
         output_path,
-        lambda text: argos_translate.translate(text, from_code, to_code),
+        lambda text: translate_text(text, from_code, to_code),
     )
