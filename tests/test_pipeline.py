@@ -7,9 +7,11 @@ pipeline encadeia as chamadas certas, na ordem certa, com os caminhos
 certos — todas as etapas são mockadas.
 """
 
+import logging
+
 import pytest
 
-from library_ebooks.pipeline import convert_book
+from library_ebooks.pipeline import PipelineStepError, convert_book
 
 
 def _write_marker(path, text):
@@ -150,3 +152,107 @@ def test_keeps_final_epub_when_azw3_is_also_generated(mocked_steps, tmp_path):
 
     assert result.epub_path.exists()
     assert result.azw3_path.exists()
+
+
+# Testes da história #20: tratamento de erros e logging do pipeline.
+
+
+def test_wraps_pdf_to_epub_failure_identifying_the_step(mocked_steps, monkeypatch, tmp_path):
+    original = ValueError("pdf corrompido")
+
+    def _fail(pdf_path, epub_path):
+        raise original
+
+    monkeypatch.setattr("library_ebooks.pipeline.convert_pdf_to_epub", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(PipelineStepError) as exc_info:
+        convert_book(pdf_path, tmp_path, book_lang="pt")
+
+    assert exc_info.value.step == "pdf_to_epub"
+    assert exc_info.value.__cause__ is original
+
+
+def test_wraps_dehyphenate_failure_identifying_the_step(mocked_steps, monkeypatch, tmp_path):
+    original = RuntimeError("html inválido")
+
+    def _fail(input_path, output_path, lang=None):
+        raise original
+
+    monkeypatch.setattr("library_ebooks.pipeline.dehyphenate_epub", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(PipelineStepError) as exc_info:
+        convert_book(pdf_path, tmp_path, book_lang="pt")
+
+    assert exc_info.value.step == "dehyphenate"
+    assert exc_info.value.__cause__ is original
+
+
+def test_wraps_translate_failure_identifying_the_step(mocked_steps, monkeypatch, tmp_path):
+    original = RuntimeError("sem pacote de idioma")
+
+    def _fail(input_path, output_path, from_code, to_code):
+        raise original
+
+    monkeypatch.setattr("library_ebooks.pipeline.translate_epub", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(PipelineStepError) as exc_info:
+        convert_book(pdf_path, tmp_path, book_lang="pt", translate_to="es")
+
+    assert exc_info.value.step == "translate"
+    assert exc_info.value.__cause__ is original
+
+
+def test_wraps_azw3_failure_identifying_the_step(mocked_steps, monkeypatch, tmp_path):
+    original = RuntimeError("calibre falhou")
+
+    def _fail(epub_path, azw3_path):
+        raise original
+
+    monkeypatch.setattr("library_ebooks.pipeline.convert_epub_to_azw3", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(PipelineStepError) as exc_info:
+        convert_book(pdf_path, tmp_path, book_lang="pt", generate_azw3=True)
+
+    assert exc_info.value.step == "epub_to_azw3"
+    assert exc_info.value.__cause__ is original
+
+
+def test_logs_progress_for_each_step(mocked_steps, tmp_path, caplog):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with caplog.at_level(logging.INFO, logger="library_ebooks.pipeline"):
+        convert_book(pdf_path, tmp_path, book_lang="pt")
+
+    messages = " ".join(caplog.messages)
+    assert "pdf_to_epub" in messages or "EPUB" in messages
+    assert "dehyphenate" in messages or "hifenização" in messages
+
+
+def test_logs_error_when_a_step_fails(mocked_steps, monkeypatch, tmp_path, caplog):
+    def _fail(pdf_path, epub_path):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("library_ebooks.pipeline.convert_pdf_to_epub", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with caplog.at_level(logging.ERROR, logger="library_ebooks.pipeline"):
+        with pytest.raises(PipelineStepError):
+            convert_book(pdf_path, tmp_path, book_lang="pt")
+
+    assert any(record.levelno == logging.ERROR for record in caplog.records)
+    assert "pdf_to_epub" in " ".join(caplog.messages)
