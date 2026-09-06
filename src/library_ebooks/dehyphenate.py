@@ -6,8 +6,11 @@ fim da linha ficam com um hífen seguido de quebra de linha, ex.:
 """
 
 import re
+from pathlib import Path
 
 import enchant
+from bs4 import BeautifulSoup, NavigableString
+from ebooklib import ITEM_DOCUMENT, epub
 
 # Hífen imediatamente seguido de quebra de linha, com um "run" de
 # caracteres de palavra (letra/dígito/underscore, incluindo acentuados)
@@ -53,3 +56,38 @@ def join_broken_words(text: str, lang: str | None = None) -> str:
         return joined
 
     return _BROKEN_WORD_PATTERN.sub(_resolve, text)
+
+
+def dehyphenate_epub(
+    input_path: str | Path, output_path: str | Path, lang: str | None = None
+) -> Path:
+    """Aplica `join_broken_words` a todo o texto de um EPUB.
+
+    Percorre os documentos HTML internos do EPUB e corrige a
+    hifenização apenas dentro dos nós de texto, sem tocar nas tags ao
+    redor — formatação (negrito, itálico etc.) é preservada.
+    """
+    book = epub.read_epub(str(input_path))
+
+    for item in book.get_items_of_type(ITEM_DOCUMENT):
+        soup = BeautifulSoup(item.get_content(), "html.parser")
+        for node in soup.find_all(string=True):
+            if not isinstance(node, NavigableString):
+                continue
+            fixed_text = join_broken_words(str(node), lang=lang)
+            if fixed_text != str(node):
+                node.replace_with(fixed_text)
+        item.set_content(str(soup).encode("utf-8"))
+
+    # Workaround para uma limitação do ebooklib: ao ler um EPUB, o TOC vem
+    # como objetos `Link` sem `uid`, o que quebra a regeneração do NCX na
+    # escrita. Reconstruímos o TOC a partir dos próprios documentos (que
+    # têm id válido), achatando qualquer hierarquia de seções que houvesse.
+    book.toc = tuple(
+        item
+        for item in book.get_items_of_type(ITEM_DOCUMENT)
+        if item.file_name != "nav.xhtml"
+    )
+
+    epub.write_epub(str(output_path), book)
+    return Path(output_path)
