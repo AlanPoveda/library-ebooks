@@ -16,6 +16,37 @@
     <p id="selected-file"></p>
   </div>
 
+  <form id="options-form">
+    <label>
+      Idioma do livro (pra corrigir hifenização)
+      <select id="book-lang">
+        <option value="">não corrigir por dicionário</option>
+        <option value="pt">Português</option>
+        <option value="es">Espanhol</option>
+        <option value="en">Inglês</option>
+      </select>
+    </label>
+
+    <label>
+      Traduzir para
+      <select id="translate-to">
+        <option value="">não traduzir</option>
+        <option value="pt">Português</option>
+        <option value="es">Espanhol</option>
+        <option value="en">Inglês</option>
+      </select>
+    </label>
+
+    <label>
+      <input type="checkbox" id="generate-azw3" />
+      Gerar também AZW3 (Kindle)
+    </label>
+
+    <button type="submit" id="convert-button">Converter</button>
+  </form>
+
+  <div id="result"></div>
+
   <script src="/app.js"></script>
 </body>
 </html>

@@ -110,6 +110,33 @@ def test_static_js_is_served_and_wires_drag_and_drop_events(client):
     assert "dropzone" in body
 
 
+# Testes da história #23: seleção de idioma de tradução e formatos de
+# saída na UI.
+
+
+def test_index_page_has_language_and_format_controls(client):
+    body = client.get("/").text
+
+    assert 'id="book-lang"' in body
+    assert 'id="translate-to"' in body
+    for lang in ("pt", "es", "en"):
+        assert f'value="{lang}"' in body
+    assert 'id="generate-azw3"' in body
+    assert 'type="checkbox"' in body
+    assert 'id="convert-button"' in body
+    assert 'id="result"' in body
+
+
+def test_app_js_submits_selected_options_to_convert_endpoint(client):
+    body = client.get("/app.js").text
+
+    assert "/convert" in body
+    assert "FormData" in body
+    assert "book-lang" in body
+    assert "translate-to" in body
+    assert "generate-azw3" in body
+
+
 def test_temp_pdf_is_removed_after_request(monkeypatch, client):
     captured_path = {}
 
