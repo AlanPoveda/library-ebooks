@@ -113,6 +113,34 @@ def test_progress_reports_value_error_as_400(monkeypatch, client):
     assert data["status_code"] == 400
 
 
+# Teste da história #13: mensagem clara quando o Calibre não é encontrado
+# (em vez de stack trace cru). Sem mockar convert_book — só a localização
+# do binário — pra exercitar a cadeia real convert -> pipeline -> app.
+
+
+def test_progress_reports_clean_message_when_calibre_not_found(monkeypatch, client):
+    from library_ebooks.convert import CalibreNotFoundError
+
+    clean_message = (
+        "ebook-convert não encontrado. Instale o Calibre "
+        "(https://calibre-ebook.com/) ou adicione o ebook-convert ao PATH."
+    )
+
+    def _raise():
+        raise CalibreNotFoundError(clean_message)
+
+    monkeypatch.setattr("library_ebooks.convert.find_ebook_convert", _raise)
+
+    job_id = _post_pdf(client, book_lang="pt").json()["job_id"]
+    data = _wait_for_done(client, job_id)
+
+    assert data["step"] == "error"
+    assert data["status_code"] == 422
+    assert clean_message in data["detail"]
+    assert "Traceback" not in data["detail"]
+    assert 'File "' not in data["detail"]
+
+
 def test_progress_returns_404_for_unknown_job(client):
     response = client.get("/progress/nao-existe")
 
