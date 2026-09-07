@@ -29,6 +29,15 @@ function showSelectedFile(file) {
   }
 }
 
+function setResult({ text, html, isError }) {
+  resultDiv.classList.toggle("result--error", Boolean(isError));
+  if (html) {
+    resultDiv.innerHTML = html;
+  } else {
+    resultDiv.textContent = text || "";
+  }
+}
+
 browseButton.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
@@ -72,15 +81,15 @@ async function pollProgress(jobId) {
     progressEl.textContent = "";
 
     if (data.step === "error") {
-      resultDiv.textContent = `Erro: ${data.detail}`;
+      setResult({ text: `Erro: ${data.detail}`, isError: true });
       return;
     }
 
-    let html = `Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
+    let html = `✓ Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
     if (data.azw3_url) {
       html += ` e <a href="${data.azw3_url}" download>${data.azw3}</a>`;
     }
-    resultDiv.innerHTML = html;
+    setResult({ html });
     return;
   }
 }
@@ -90,7 +99,7 @@ optionsForm.addEventListener("submit", async (event) => {
 
   const file = fileInput.files[0];
   if (!file) {
-    resultDiv.textContent = "Selecione um PDF antes de converter.";
+    setResult({ text: "Selecione um PDF antes de converter.", isError: true });
     return;
   }
 
@@ -105,7 +114,7 @@ optionsForm.addEventListener("submit", async (event) => {
   formData.append("generate_azw3", generateAzw3Checkbox.checked);
   formData.append("check_grammar", checkGrammarCheckbox.checked);
 
-  resultDiv.textContent = "";
+  setResult({ text: "" });
   progressEl.textContent = "Enviando...";
 
   try {
@@ -114,13 +123,13 @@ optionsForm.addEventListener("submit", async (event) => {
 
     if (!response.ok) {
       progressEl.textContent = "";
-      resultDiv.textContent = `Erro: ${data.detail}`;
+      setResult({ text: `Erro: ${data.detail}`, isError: true });
       return;
     }
 
     await pollProgress(data.job_id);
   } catch (error) {
     progressEl.textContent = "";
-    resultDiv.textContent = `Erro: ${error.message}`;
+    setResult({ text: `Erro: ${error.message}`, isError: true });
   }
 });

@@ -7,51 +7,75 @@
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <h1>Library Ebooks</h1>
-  <p>Converte PDF em EPUB, corrige hifenização, traduz e revisa gramática.</p>
+  <div class="page">
+    <header class="page__header">
+      <div class="brand">
+        <span class="brand__mark" aria-hidden="true">📚</span>
+        <h1>Library Ebooks</h1>
+      </div>
+      <p class="subtitle">
+        Converte PDF em EPUB, corrige hifenização, traduz e revisa gramática —
+        tudo local, direto no seu computador.
+      </p>
+    </header>
 
-  <div id="dropzone">
-    <p>Arraste um PDF aqui, ou <button type="button" id="browse-button">escolha um arquivo</button></p>
-    <input type="file" id="file-input" accept=".pdf" hidden />
-    <p id="selected-file"></p>
+    <main class="card">
+      <div id="dropzone" class="dropzone">
+        <span class="dropzone__icon" aria-hidden="true">📄</span>
+        <p class="dropzone__text">
+          Arraste um PDF aqui, ou
+          <button type="button" id="browse-button" class="link-button">escolha um arquivo</button>
+        </p>
+        <input type="file" id="file-input" accept=".pdf" hidden />
+        <p id="selected-file" class="dropzone__file"></p>
+      </div>
+
+      <form id="options-form" class="options">
+        <div class="field">
+          <label for="book-lang">Idioma do livro</label>
+          <select id="book-lang">
+            <option value="">não corrigir por dicionário</option>
+            <option value="pt">Português</option>
+            <option value="es">Espanhol</option>
+            <option value="en">Inglês</option>
+          </select>
+          <span class="field__hint">usado pra corrigir hifenização quebrada</span>
+        </div>
+
+        <div class="field">
+          <label for="translate-to">Traduzir para</label>
+          <select id="translate-to">
+            <option value="">não traduzir</option>
+            <option value="pt">Português</option>
+            <option value="es">Espanhol</option>
+            <option value="en">Inglês</option>
+          </select>
+          <span class="field__hint">um livro inteiro pode levar minutos</span>
+        </div>
+
+        <div class="options__toggles">
+          <label class="toggle">
+            <input type="checkbox" id="generate-azw3" />
+            <span>Gerar também AZW3 (Kindle)</span>
+          </label>
+
+          <label class="toggle">
+            <input type="checkbox" id="check-grammar" />
+            <span>Verificar e corrigir gramática</span>
+          </label>
+        </div>
+
+        <button type="submit" id="convert-button" class="primary-button">Converter</button>
+      </form>
+
+      <p id="progress" class="progress" role="status"></p>
+      <div id="result" class="result"></div>
+    </main>
+
+    <footer class="page__footer">
+      <p>Roda 100% local — nenhum arquivo sai do seu computador.</p>
+    </footer>
   </div>
-
-  <form id="options-form">
-    <label>
-      Idioma do livro (pra corrigir hifenização)
-      <select id="book-lang">
-        <option value="">não corrigir por dicionário</option>
-        <option value="pt">Português</option>
-        <option value="es">Espanhol</option>
-        <option value="en">Inglês</option>
-      </select>
-    </label>
-
-    <label>
-      Traduzir para
-      <select id="translate-to">
-        <option value="">não traduzir</option>
-        <option value="pt">Português</option>
-        <option value="es">Espanhol</option>
-        <option value="en">Inglês</option>
-      </select>
-    </label>
-
-    <label>
-      <input type="checkbox" id="generate-azw3" />
-      Gerar também AZW3 (Kindle)
-    </label>
-
-    <label>
-      <input type="checkbox" id="check-grammar" />
-      Verificar e corrigir gramática (requer idioma do livro selecionado acima)
-    </label>
-
-    <button type="submit" id="convert-button">Converter</button>
-  </form>
-
-  <p id="progress"></p>
-  <div id="result"></div>
 
   <script src="/app.js"></script>
 </body>
