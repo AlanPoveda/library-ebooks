@@ -1,0 +1,23 @@
+#!/bin/bash
+# Gerado por packaging/build_macos_app.sh — não edite este arquivo
+# diretamente dentro do .app, ele é sobrescrito a cada build.
+set -euo pipefail
+
+PROJECT_DIR="__PROJECT_DIR__"
+PORT="__PORT__"
+LOG_FILE="/tmp/library_transformer.log"
+
+cd "$PROJECT_DIR"
+source .venv/bin/activate
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
+
+if ! curl -sf "http://127.0.0.1:$PORT/" > /dev/null 2>&1; then
+  nohup uvicorn library_ebooks.app:app --port "$PORT" >> "$LOG_FILE" 2>&1 &
+  disown
+  for i in $(seq 1 60); do
+    curl -sf "http://127.0.0.1:$PORT/" > /dev/null 2>&1 && break
+    sleep 0.5
+  done
+fi
+
+open "http://127.0.0.1:$PORT/"
