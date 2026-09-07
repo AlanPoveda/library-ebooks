@@ -1,0 +1,15 @@
+#!/bin/bash
+# Gerado por packaging/build_macos_app.sh — não edite este arquivo
+# diretamente dentro do .app, ele é sobrescrito a cada build.
+set -euo pipefail
+
+PORT="__PORT__"
+
+PIDS=$(lsof -ti:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+
+if [ -z "$PIDS" ]; then
+  osascript -e 'display notification "Nenhum servidor rodando na porta '"$PORT"'." with title "Library Transformer"'
+else
+  kill $PIDS
+  osascript -e 'display notification "Servidor parado." with title "Library Transformer"'
+fi

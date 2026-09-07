@@ -17,7 +17,7 @@
     <key>CFBundleExecutable</key>
     <string>launcher</string>
     <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
+    <string>__ICON_FILE__</string>
     <key>LSMinimumSystemVersion</key>
     <string>11.0</string>
     <key>LSUIElement</key>

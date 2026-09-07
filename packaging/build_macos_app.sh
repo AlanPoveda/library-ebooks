@@ -1,11 +1,14 @@
 #!/bin/bash
-# Gera "Library Transformer.app": um app do macOS que sobe o servidor
-# local e abre o navegador — pra não precisar usar o terminal no dia a
-# dia. Por padrão instala na Área de Trabalho.
+# Gera dois apps do macOS pra não precisar de terminal no dia a dia:
+#
+#   "Library Transformer.app"       -> sobe o servidor e abre o navegador
+#   "Stop Library Transformer.app"  -> para o servidor
+#
+# Por padrão instala os dois na Área de Trabalho.
 #
 # Uso:
-#   ./packaging/build_macos_app.sh                # -> ~/Desktop/Library Transformer.app
-#   ./packaging/build_macos_app.sh /caminho/App.app
+#   ./packaging/build_macos_app.sh                # -> ~/Desktop
+#   ./packaging/build_macos_app.sh /algum/dir      # -> dir escolhido
 #
 # Variável de ambiente opcional:
 #   LIBRARY_TRANSFORMER_PORT=9000 ./packaging/build_macos_app.sh
@@ -13,26 +16,37 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_NAME="Library Transformer"
-DEST="${1:-$HOME/Desktop/$APP_NAME.app}"
+DEST_DIR="${1:-$HOME/Desktop}"
 PORT="${LIBRARY_TRANSFORMER_PORT:-8800}"
 
 if [ ! -d "$PROJECT_DIR/.venv" ]; then
   echo "Aviso: não achei $PROJECT_DIR/.venv — rode a instalação do README antes." >&2
 fi
 
-rm -rf "$DEST"
-mkdir -p "$DEST/Contents/MacOS" "$DEST/Contents/Resources"
+build_app() {
+  local app_name="$1" template="$2" icon="$3" dest="$DEST_DIR/$1.app"
 
-cp "$SCRIPT_DIR/AppIcon.icns" "$DEST/Contents/Resources/AppIcon.icns"
+  rm -rf "$dest"
+  mkdir -p "$dest/Contents/MacOS" "$dest/Contents/Resources"
 
-sed "s#__APP_NAME__#$APP_NAME#g" "$SCRIPT_DIR/Info.plist.template" > "$DEST/Contents/Info.plist"
+  cp "$SCRIPT_DIR/$icon.icns" "$dest/Contents/Resources/$icon.icns"
 
-sed -e "s#__PROJECT_DIR__#$PROJECT_DIR#g" -e "s#__PORT__#$PORT#g" \
-  "$SCRIPT_DIR/launcher.sh.template" > "$DEST/Contents/MacOS/launcher"
-chmod +x "$DEST/Contents/MacOS/launcher"
+  sed -e "s#__APP_NAME__#$app_name#g" -e "s#__ICON_FILE__#$icon#g" \
+    "$SCRIPT_DIR/Info.plist.template" > "$dest/Contents/Info.plist"
 
-echo "Criado: $DEST"
-echo "Dê dois cliques nele pra subir o servidor e abrir o app no navegador."
-echo "(No primeiro clique o macOS pode avisar que é de 'desenvolvedor não identificado' —"
-echo " clique com o botão direito > Abrir, uma vez só, pra liberar.)"
+  sed -e "s#__PROJECT_DIR__#$PROJECT_DIR#g" -e "s#__PORT__#$PORT#g" \
+    "$SCRIPT_DIR/$template" > "$dest/Contents/MacOS/launcher"
+  chmod +x "$dest/Contents/MacOS/launcher"
+
+  echo "Criado: $dest"
+}
+
+build_app "Library Transformer" "launcher.sh.template" "AppIcon"
+build_app "Stop Library Transformer" "stop_launcher.sh.template" "StopIcon"
+
+echo
+echo "Dê dois cliques em 'Library Transformer' pra abrir, e em"
+echo "'Stop Library Transformer' pra parar o servidor quando quiser."
+echo "(No primeiro clique de cada um o macOS pode avisar que é de"
+echo " 'desenvolvedor não identificado' — clique com o botão direito >"
+echo " Abrir, uma vez só por app, pra liberar.)"
