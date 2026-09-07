@@ -227,6 +227,40 @@ def test_app_js_submits_selected_options_to_convert_endpoint(client):
     assert "generate-azw3" in body
 
 
+# Follow-up pós-board: expor check_grammar (pipeline já suporta desde a
+# #30) como opção na UI, mesmo padrão da #23.
+
+
+def test_index_page_has_grammar_check_control(client):
+    body = client.get("/").text
+
+    assert 'id="check-grammar"' in body
+
+
+def test_app_js_submits_check_grammar(client):
+    body = client.get("/app.js").text
+
+    assert "check-grammar" in body
+    assert "check_grammar" in body
+
+
+def test_convert_passes_check_grammar_to_pipeline(monkeypatch, client, tmp_path):
+    calls = []
+
+    def _fake_convert_book(pdf_path, **kwargs):
+        calls.append(kwargs)
+        epub_path = tmp_path / "livro.epub"
+        epub_path.write_text("epub final")
+        return ConversionResult(epub_path=epub_path, azw3_path=None)
+
+    monkeypatch.setattr("library_ebooks.app.convert_book", _fake_convert_book)
+
+    job_id = _post_pdf(client, book_lang="pt", check_grammar="true").json()["job_id"]
+    _wait_for_done(client, job_id)
+
+    assert calls[0]["check_grammar"] is True
+
+
 # Testes da história #24: endpoint de download dos arquivos gerados.
 
 

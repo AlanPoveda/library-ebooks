@@ -6,6 +6,7 @@ const STEP_LABELS = {
   queued: "Na fila...",
   pdf_to_epub: "Convertendo PDF para EPUB...",
   dehyphenate: "Corrigindo hifenização...",
+  grammar_check: "Verificando gramática...",
   translate: "Traduzindo...",
   epub_to_azw3: "Gerando AZW3...",
 };
@@ -18,6 +19,7 @@ const optionsForm = document.getElementById("options-form");
 const bookLangSelect = document.getElementById("book-lang");
 const translateToSelect = document.getElementById("translate-to");
 const generateAzw3Checkbox = document.getElementById("generate-azw3");
+const checkGrammarCheckbox = document.getElementById("check-grammar");
 const progressEl = document.getElementById("progress");
 const resultDiv = document.getElementById("result");
 
@@ -101,6 +103,7 @@ optionsForm.addEventListener("submit", async (event) => {
     formData.append("translate_to", translateToSelect.value);
   }
   formData.append("generate_azw3", generateAzw3Checkbox.checked);
+  formData.append("check_grammar", checkGrammarCheckbox.checked);
 
   resultDiv.textContent = "";
   progressEl.textContent = "Enviando...";

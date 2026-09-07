@@ -72,6 +72,7 @@ async def convert(
     book_lang: str | None = Form(None),
     translate_to: str | None = Form(None),
     generate_azw3: bool = Form(False),
+    check_grammar: bool = Form(False),
 ):
     """Recebe um PDF e dispara o pipeline em background.
 
@@ -94,6 +95,7 @@ async def convert(
             "book_lang": book_lang,
             "translate_to": translate_to,
             "generate_azw3": generate_azw3,
+            "check_grammar": check_grammar,
         },
         daemon=True,
     )
