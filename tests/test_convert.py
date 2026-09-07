@@ -40,6 +40,24 @@ def test_raises_clear_error_when_not_found_anywhere(monkeypatch):
         find_ebook_convert()
 
 
+def test_falls_back_to_windows_path_when_macos_path_is_missing(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    windows_path = r"C:\Program Files\Calibre2\ebook-convert.exe"
+    monkeypatch.setattr(Path, "is_file", lambda self: str(self) == windows_path)
+
+    assert find_ebook_convert() == windows_path
+
+
+def test_falls_back_to_windows_x86_path_when_others_are_missing(monkeypatch):
+    monkeypatch.setattr("shutil.which", lambda name: None)
+
+    windows_x86_path = r"C:\Program Files (x86)\Calibre2\ebook-convert.exe"
+    monkeypatch.setattr(Path, "is_file", lambda self: str(self) == windows_x86_path)
+
+    assert find_ebook_convert() == windows_x86_path
+
+
 # Testes da história #11: wrapper PDF -> EPUB.
 
 

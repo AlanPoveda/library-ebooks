@@ -3,13 +3,23 @@
 O Calibre é o motor usado para converter PDF -> EPUB e EPUB -> AZW3
 (ver `PLANNING.md`). No macOS, instalar o app não coloca os binários
 de linha de comando no PATH por padrão — eles ficam dentro do bundle.
+No Windows, o instalador do Calibre também não adiciona ao PATH por
+padrão, e usa "Calibre2" como nome de pasta mesmo em instalações novas
+(peculiaridade histórica do instalador).
 """
 
 import shutil
 import subprocess
 from pathlib import Path
 
-_MACOS_BUNDLE_PATH = Path("/Applications/calibre.app/Contents/MacOS/ebook-convert")
+# Caminhos conhecidos de instalação, checados em ordem quando o
+# ebook-convert não está no PATH. Cada SO só bate um desses — os outros
+# simplesmente não existem na máquina, o que é esperado.
+_KNOWN_INSTALL_PATHS = [
+    Path("/Applications/calibre.app/Contents/MacOS/ebook-convert"),  # macOS
+    Path(r"C:\Program Files\Calibre2\ebook-convert.exe"),  # Windows 64-bit
+    Path(r"C:\Program Files (x86)\Calibre2\ebook-convert.exe"),  # Windows 32-bit
+]
 
 
 class CalibreNotFoundError(RuntimeError):
@@ -23,16 +33,18 @@ class ConversionError(RuntimeError):
 def find_ebook_convert() -> str:
     """Localiza o executável `ebook-convert` do Calibre.
 
-    Procura primeiro no PATH; se não achar, tenta o caminho padrão do
-    bundle do Calibre no macOS. Levanta `CalibreNotFoundError` com uma
-    mensagem acionável se não encontrar em nenhum dos dois lugares.
+    Procura primeiro no PATH; se não achar, tenta os caminhos padrão de
+    instalação conhecidos (macOS e Windows — ver `_KNOWN_INSTALL_PATHS`).
+    Levanta `CalibreNotFoundError` com uma mensagem acionável se não
+    encontrar em nenhum lugar.
     """
     path_match = shutil.which("ebook-convert")
     if path_match:
         return path_match
 
-    if _MACOS_BUNDLE_PATH.is_file():
-        return str(_MACOS_BUNDLE_PATH)
+    for candidate in _KNOWN_INSTALL_PATHS:
+        if candidate.is_file():
+            return str(candidate)
 
     raise CalibreNotFoundError(
         "ebook-convert não encontrado. Instale o Calibre "
