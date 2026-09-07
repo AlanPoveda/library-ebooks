@@ -87,6 +87,17 @@ library-ebooks/
 - **Argos Translate e pares de idioma**: nem todo par (ex: pt→es) tem pacote
   direto — pode ser necessário traduzir em duas etapas (pt→en→es) quando o
   par direto não existir.
+- **Tradução de livro inteiro é lenta (CPU-only, sem GPU)**: medido em
+  produção com um livro real (~155 mil palavras, ~10.500 nós de texto):
+  ~150ms por parágrafo de ~20 palavras, dando **~20-30 min pro livro
+  inteiro**. Confirmado por medição direta que **não é overhead por
+  chamada** — 30 chamadas separadas e 1 chamada com o mesmo conteúdo
+  total levaram o mesmo tempo (4.55s vs 4.56s) — é tempo real de
+  inferência do modelo, proporcional ao volume de texto. Agrupar por
+  capítulo não ajudaria; só GPU ou um modelo menor reduziriam isso, o
+  que é uma frente maior, fora de escopo por ora. UI não mostra
+  progresso dentro da etapa "translate" (só o nome da etapa) — pode
+  parecer travado num livro grande.
 - **Dehyphenation**: precisa de dicionários (`pyenchant`/hunspell) para
   `pt_BR`, `es`, `en` para validar se a junção de duas linhas forma uma
   palavra real, evitando juntar hífens que são legítimos (ex: "guarda-chuva").
