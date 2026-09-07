@@ -125,15 +125,19 @@ double-clickable app:
 ./packaging/build_macos_app.sh
 ```
 
-This creates **Library Transformer.app** on your Desktop. Double-click
-it and it starts the server (if it isn't already running) and opens
-the app in your browser. macOS will likely warn that it's from an
-"unidentified developer" the first time — right-click → Open once to
-allow it.
+This creates two apps on your Desktop:
 
-Closing the browser tab does **not** stop the server (a conversion
-might still be running in the background) — quit it manually if you
-need to (e.g. `lsof -ti:8800 | xargs kill`).
+- **Library Transformer.app** — starts the server (if it isn't
+  already running) and opens it in your browser.
+- **Stop Library Transformer.app** — stops the server.
+
+macOS will likely warn that each is from an "unidentified developer"
+the first time — right-click → Open once per app to allow it.
+
+Closing the browser tab does **not** stop the server — it's a
+background process independent of the tab (and a conversion might
+still be running). Use **Stop Library Transformer.app** when you're
+done, or run `lsof -ti:8800 | xargs kill` from a terminal.
 
 ## Running tests
 
