@@ -10,6 +10,8 @@ Dependências de sistema (macOS):
 
 ```bash
 brew install enchant   # dicionários usados na correção de hifenização
+brew install openjdk   # Java, necessário pro LanguageTool (verificação gramatical)
+echo 'export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"' >> ~/.zshrc
 ```
 
 O [Calibre](https://calibre-ebook.com/) precisa estar instalado
