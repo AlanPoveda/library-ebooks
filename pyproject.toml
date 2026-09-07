@@ -6,6 +6,8 @@ build-backend = "hatchling.build"
 name = "library-ebooks"
 version = "0.1.0"
 description = "Converte PDFs em EPUB/AZW3, corrige hifenização quebrada e traduz livros offline."
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.11"
 dependencies = [
     "pyenchant>=3.2",
