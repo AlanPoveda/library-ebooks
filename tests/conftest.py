@@ -28,6 +28,36 @@ def build_epub(tmp_path):
 
 
 @pytest.fixture
+def build_multi_chapter_epub(tmp_path):
+    """Constrói um EPUB com vários capítulos: recebe uma lista de pares
+    (file_name, conteúdo_html)."""
+
+    def _build(chapters: list[tuple[str, str]]):
+        book = epub.EpubBook()
+        book.set_identifier("id123")
+        book.set_title("Livro de teste")
+        book.set_language("pt")
+
+        items = []
+        for file_name, content in chapters:
+            chapter = epub.EpubHtml(title=file_name, file_name=file_name, lang="pt")
+            chapter.content = content
+            book.add_item(chapter)
+            items.append(chapter)
+
+        book.add_item(epub.EpubNcx())
+        book.add_item(epub.EpubNav())
+        book.toc = tuple(items)
+        book.spine = ["nav", *items]
+
+        input_path = tmp_path / "entrada.epub"
+        epub.write_epub(str(input_path), book)
+        return input_path
+
+    return _build
+
+
+@pytest.fixture
 def read_epub_chapter():
     """Lê de volta o conteúdo HTML de um capítulo de um EPUB gerado."""
 

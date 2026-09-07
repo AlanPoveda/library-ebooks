@@ -8,8 +8,11 @@ máquina), sem nenhuma chamada externa.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import language_tool_python
+from bs4 import BeautifulSoup
+from ebooklib import ITEM_DOCUMENT, epub
 
 # Códigos de idioma simples usados no resto do app (es/en/pt) mapeados
 # pros códigos de idioma do LanguageTool.
@@ -100,3 +103,47 @@ def apply_high_confidence_corrections(
             remaining.append(issue)
     remaining.reverse()  # devolve na ordem de leitura (offset crescente)
     return corrected, remaining
+
+
+@dataclass
+class ChapterLintReport:
+    """Problemas encontrados num capítulo (documento HTML) do EPUB."""
+
+    file_name: str
+    issues: list[GrammarIssue]
+
+
+def lint_epub(epub_path: str | Path, lang: str) -> list[ChapterLintReport]:
+    """Roda a verificação gramatical por capítulo de um EPUB.
+
+    Retorna um relatório agregado (arquivo, posição, regra, sugestão)
+    só para os capítulos com problemas — não altera o EPUB. `nav.xhtml`
+    (documento de navegação/TOC, não conteúdo do livro) é pulado, igual
+    ao resto do app (ver `epub_utils.apply_to_epub_text_nodes`).
+    """
+    book = epub.read_epub(str(epub_path))
+    reports = []
+
+    for item in book.get_items_of_type(ITEM_DOCUMENT):
+        if item.file_name == "nav.xhtml":
+            continue
+        text = BeautifulSoup(item.get_content(), "html.parser").get_text()
+        issues = check_text(text, lang=lang)
+        if issues:
+            reports.append(ChapterLintReport(file_name=item.file_name, issues=issues))
+
+    return reports
+
+
+def format_lint_report(reports: list[ChapterLintReport]) -> str:
+    """Formata um relatório no estilo de saída de um linter:
+    `arquivo:posição: [regra] mensagem (sugestão: ...)`, uma linha por
+    problema."""
+    lines = []
+    for report in reports:
+        for issue in report.issues:
+            line = f"{report.file_name}:{issue.offset}: [{issue.rule_id}] {issue.message}"
+            if issue.replacements:
+                line += f" (sugestão: {', '.join(issue.replacements)})"
+            lines.append(line)
+    return "\n".join(lines)
