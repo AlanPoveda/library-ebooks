@@ -39,10 +39,21 @@ def mocked_steps(monkeypatch):
         calls.append(("epub_to_azw3", epub_path, azw3_path))
         return _write_marker(azw3_path, "azw3")
 
+    def _correct_epub(input_path, output_path, lang):
+        calls.append(("grammar_check", input_path, output_path, lang))
+        return _write_marker(output_path, "epub revisado")
+
+    def _lint_epub(epub_path, lang):
+        calls.append(("lint_epub", epub_path, lang))
+        return []
+
     monkeypatch.setattr("library_ebooks.pipeline.convert_pdf_to_epub", _convert_pdf_to_epub)
     monkeypatch.setattr("library_ebooks.pipeline.dehyphenate_epub", _dehyphenate_epub)
     monkeypatch.setattr("library_ebooks.pipeline.translate_epub", _translate_epub)
     monkeypatch.setattr("library_ebooks.pipeline.convert_epub_to_azw3", _convert_epub_to_azw3)
+    monkeypatch.setattr("library_ebooks.pipeline.correct_epub", _correct_epub)
+    monkeypatch.setattr("library_ebooks.pipeline.lint_epub", _lint_epub)
+    monkeypatch.setattr("library_ebooks.pipeline.format_lint_report", lambda reports: "relatório fake")
 
     return calls
 
@@ -294,3 +305,151 @@ def test_on_progress_is_optional(mocked_steps, tmp_path):
     pdf_path.write_text("conteúdo fake do pdf")
 
     convert_book(pdf_path, tmp_path, book_lang="pt")  # não deve levantar sem on_progress
+
+
+# Testes da história #30: verificação gramatical como etapa opcional do
+# pipeline, configurável para rodar antes ou depois da tradução.
+
+
+def test_grammar_check_disabled_by_default(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt")
+
+    steps = [call[0] for call in mocked_steps]
+    assert "grammar_check" not in steps
+    assert result.lint_report_path is None
+
+
+def test_grammar_check_runs_before_translate_by_default(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(pdf_path, tmp_path, book_lang="pt", translate_to="es", check_grammar=True)
+
+    steps = [call[0] for call in mocked_steps if call[0] != "lint_epub"]
+    assert steps == ["pdf_to_epub", "dehyphenate", "grammar_check", "translate"]
+
+    translate_call = next(call for call in mocked_steps if call[0] == "translate")
+    grammar_call = next(call for call in mocked_steps if call[0] == "grammar_check")
+    assert translate_call[1] == grammar_call[2]  # traduz a partir do epub revisado
+
+
+def test_grammar_check_runs_after_translate_when_configured(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(
+        pdf_path,
+        tmp_path,
+        book_lang="pt",
+        translate_to="es",
+        check_grammar=True,
+        grammar_check_when="after_translate",
+    )
+
+    steps = [call[0] for call in mocked_steps if call[0] != "lint_epub"]
+    assert steps == ["pdf_to_epub", "dehyphenate", "translate", "grammar_check"]
+
+    translate_call = next(call for call in mocked_steps if call[0] == "translate")
+    grammar_call = next(call for call in mocked_steps if call[0] == "grammar_check")
+    assert grammar_call[1] == translate_call[2]  # revisa a partir do epub traduzido
+
+
+def test_grammar_check_without_translation_runs_once(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", check_grammar=True)
+
+    steps = [call[0] for call in mocked_steps if call[0] != "lint_epub"]
+    assert steps == ["pdf_to_epub", "dehyphenate", "grammar_check"]
+    assert result.epub_path.read_text() == "epub revisado"
+
+
+def test_raises_when_check_grammar_without_book_lang(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(ValueError, match="book_lang"):
+        convert_book(pdf_path, tmp_path, check_grammar=True)
+
+    assert mocked_steps == []
+
+
+def test_raises_for_invalid_grammar_check_when(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    with pytest.raises(ValueError, match="grammar_check_when"):
+        convert_book(
+            pdf_path, tmp_path, book_lang="pt", check_grammar=True, grammar_check_when="depois"
+        )
+
+    assert mocked_steps == []
+
+
+def test_removes_intermediate_checked_epub_after_translate(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(pdf_path, tmp_path, book_lang="pt", translate_to="es", check_grammar=True)
+
+    checked_path = tmp_path / "livro.checked.epub"
+    assert not checked_path.exists()  # era só intermediário até a tradução
+
+
+def test_on_progress_includes_grammar_check_step(mocked_steps, tmp_path):
+    progress = []
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    convert_book(pdf_path, tmp_path, book_lang="pt", check_grammar=True, on_progress=progress.append)
+
+    assert progress == ["pdf_to_epub", "dehyphenate", "grammar_check"]
+
+
+def test_generates_lint_report_file_when_issues_remain(mocked_steps, monkeypatch, tmp_path):
+    from library_ebooks.lint import ChapterLintReport, GrammarIssue
+
+    fake_report = [
+        ChapterLintReport("chap1.xhtml", [GrammarIssue(0, 1, "m", "R1", ["x"], "style")])
+    ]
+    monkeypatch.setattr("library_ebooks.pipeline.lint_epub", lambda epub_path, lang: fake_report)
+    monkeypatch.setattr(
+        "library_ebooks.pipeline.format_lint_report", lambda reports: "chap1.xhtml:0: [R1] m"
+    )
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", check_grammar=True)
+
+    assert result.lint_report_path == tmp_path / "livro.lint.txt"
+    assert result.lint_report_path.read_text() == "chap1.xhtml:0: [R1] m"
+
+
+def test_no_lint_report_file_when_no_issues_remain(mocked_steps, tmp_path):
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", check_grammar=True)
+
+    assert result.lint_report_path is None
+    assert not (tmp_path / "livro.lint.txt").exists()
+
+
+def test_lint_report_failure_does_not_abort_conversion(mocked_steps, monkeypatch, tmp_path):
+    def _fail(epub_path, lang):
+        raise RuntimeError("boom no relatório")
+
+    monkeypatch.setattr("library_ebooks.pipeline.lint_epub", _fail)
+
+    pdf_path = tmp_path / "livro.pdf"
+    pdf_path.write_text("conteúdo fake do pdf")
+
+    result = convert_book(pdf_path, tmp_path, book_lang="pt", check_grammar=True)
+
+    assert result.epub_path.exists()
+    assert result.lint_report_path is None

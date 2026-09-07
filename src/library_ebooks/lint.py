@@ -14,6 +14,8 @@ import language_tool_python
 from bs4 import BeautifulSoup
 from ebooklib import ITEM_DOCUMENT, epub
 
+from .epub_utils import apply_to_epub_text_nodes
+
 # Códigos de idioma simples usados no resto do app (es/en/pt) mapeados
 # pros códigos de idioma do LanguageTool.
 _LANGUAGE_TOOL_CODES = {"pt": "pt-BR", "es": "es", "en": "en-US"}
@@ -103,6 +105,31 @@ def apply_high_confidence_corrections(
             remaining.append(issue)
     remaining.reverse()  # devolve na ordem de leitura (offset crescente)
     return corrected, remaining
+
+
+def correct_text(text: str, lang: str) -> str:
+    """Verifica e aplica as correções de alta confiança num trecho de
+    texto, descartando o restante do relatório (usado nó a nó pelo
+    pipeline via `correct_epub`; o relatório agregado e preciso por
+    capítulo é gerado por `lint_epub`, que enxerga o texto inteiro do
+    capítulo em vez de fragmentos)."""
+    corrected, _ = apply_high_confidence_corrections(text, check_text(text, lang=lang))
+    return corrected
+
+
+def correct_epub(input_path: str | Path, output_path: str | Path, lang: str) -> Path:
+    """Aplica correções gramaticais de alta confiança num EPUB, nó de
+    texto por nó de texto — mesmo padrão do dehyphenate/tradução.
+
+    Nota: por checar nó a nó (fragmentos de texto entre tags), perde um
+    pouco do contexto de frase que o LanguageTool teria checando o
+    capítulo inteiro — é o mesmo trade-off que dehyphenate/translate já
+    fazem. O relatório do que resta (`lint_epub`) roda sobre o capítulo
+    inteiro e não sofre dessa limitação.
+    """
+    return apply_to_epub_text_nodes(
+        input_path, output_path, lambda text: correct_text(text, lang)
+    )
 
 
 @dataclass

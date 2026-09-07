@@ -1,9 +1,8 @@
 """Orquestra o pipeline completo de conversão de um livro.
 
-PDF -> EPUB (Calibre) -> dehyphenate -> tradução opcional -> AZW3
-opcional (Calibre). Ver `PLANNING.md` pro desenho completo — a etapa de
-verificação gramatical (épico 6) ainda não está integrada aqui; quando
-existir, entra entre o dehyphenate e a tradução.
+PDF -> EPUB (Calibre) -> dehyphenate -> verificação gramatical opcional
+-> tradução opcional -> AZW3 opcional (Calibre). Ver `PLANNING.md` pro
+desenho completo.
 """
 
 import logging
@@ -13,6 +12,7 @@ from typing import Callable
 
 from .convert import convert_epub_to_azw3, convert_pdf_to_epub
 from .dehyphenate import dehyphenate_epub
+from .lint import correct_epub, format_lint_report, lint_epub
 from .translate import translate_epub
 
 logger = logging.getLogger(__name__)
@@ -21,6 +21,8 @@ logger = logging.getLogger(__name__)
 # explícito — ver PLANNING.md (pasta gitignored, não versiona ebooks).
 DEFAULT_OUTPUT_DIR = Path("books")
 
+_VALID_GRAMMAR_CHECK_WHEN = {"before_translate", "after_translate"}
+
 
 @dataclass
 class ConversionResult:
@@ -28,6 +30,7 @@ class ConversionResult:
 
     epub_path: Path
     azw3_path: Path | None = None
+    lint_report_path: Path | None = None
 
 
 class PipelineStepError(RuntimeError):
@@ -72,32 +75,51 @@ def convert_book(
     book_lang: str | None = None,
     translate_to: str | None = None,
     generate_azw3: bool = False,
+    check_grammar: bool = False,
+    grammar_check_when: str = "before_translate",
     on_progress: Callable[[str], None] | None = None,
 ) -> ConversionResult:
     """Roda o pipeline completo sobre um PDF e retorna os arquivos finais.
 
     `output_dir` default pra `books/` (relativo ao diretório de trabalho)
     quando não informado. `book_lang` é o idioma em que o livro já está
-    escrito — usado tanto pra validação por dicionário na correção de
-    hifenização quanto como idioma de origem se `translate_to` for
-    passado (nesse caso é obrigatório). `translate_to` deve ser um dos
-    idiomas de destino suportados (es/en/pt) — validado dentro de
-    `translate_epub`.
+    escrito — usado pra validação por dicionário na correção de
+    hifenização, como idioma de origem se `translate_to` for passado, e
+    pro LanguageTool se `check_grammar` for passado (nesses dois casos é
+    obrigatório). `translate_to` deve ser um dos idiomas de destino
+    suportados (es/en/pt) — validado dentro de `translate_epub`.
+
+    `check_grammar` liga a etapa opcional de verificação gramatical
+    (LanguageTool local, épico 6): aplica automaticamente as correções
+    de alta confiança e, se sobrar algum problema, salva um relatório em
+    `{stem}.lint.txt`. `grammar_check_when` ("before_translate" ou
+    "after_translate") controla se ela roda antes ou depois da tradução.
 
     `on_progress`, se passado, é chamado com o nome de cada etapa
-    ("pdf_to_epub", "dehyphenate", "translate", "epub_to_azw3") no
-    instante em que ela começa a rodar — pro chamador (ex.: o app web)
-    reportar progresso em tempo real.
+    ("pdf_to_epub", "dehyphenate", "grammar_check", "translate",
+    "epub_to_azw3") no instante em que ela começa a rodar — pro
+    chamador (ex.: o app web) reportar progresso em tempo real.
 
     Arquivos puramente intermediários (o EPUB "bruto" recém-saído do
-    Calibre, e o EPUB "limpo" pré-tradução quando há tradução) são
-    apagados ao longo do processo — só os arquivos finais (EPUB e,
-    opcionalmente, AZW3) permanecem em `output_dir`.
+    Calibre, e cada EPUB que vira entrada de uma etapa seguinte) são
+    apagados ao longo do processo — só os arquivos finais (EPUB,
+    opcionalmente AZW3, opcionalmente o relatório de gramática)
+    permanecem em `output_dir`.
     """
     if translate_to is not None and book_lang is None:
         raise ValueError(
             "book_lang é obrigatório quando translate_to é usado "
             "(precisa saber o idioma de origem do livro pra traduzir)."
+        )
+    if check_grammar and book_lang is None:
+        raise ValueError(
+            "book_lang é obrigatório quando check_grammar é usado "
+            "(precisa saber o idioma do livro pra verificar a gramática)."
+        )
+    if grammar_check_when not in _VALID_GRAMMAR_CHECK_WHEN:
+        raise ValueError(
+            f"grammar_check_when inválido: {grammar_check_when!r} "
+            f"(use um de {sorted(_VALID_GRAMMAR_CHECK_WHEN)})"
         )
 
     pdf_path = Path(pdf_path)
@@ -128,20 +150,35 @@ def convert_book(
     raw_epub_path.unlink()
 
     final_epub_path = clean_epub_path
+
+    if check_grammar and grammar_check_when == "before_translate":
+        final_epub_path = _run_grammar_check(
+            final_epub_path, output_dir, stem, book_lang, on_progress
+        )
+
     if translate_to is not None:
         translated_path = output_dir / f"{stem}.{translate_to}.epub"
         _run_step(
             "translate",
             f"Traduzindo para {translate_to}",
             translate_epub,
-            clean_epub_path,
+            final_epub_path,
             translated_path,
             book_lang,
             translate_to,
             on_progress=on_progress,
         )
-        clean_epub_path.unlink()  # era só intermediário pra chegar na tradução
+        final_epub_path.unlink()  # era só intermediário pra chegar na tradução
         final_epub_path = translated_path
+
+    if check_grammar and grammar_check_when == "after_translate":
+        final_epub_path = _run_grammar_check(
+            final_epub_path, output_dir, stem, book_lang, on_progress
+        )
+
+    lint_report_path = None
+    if check_grammar:
+        lint_report_path = _write_lint_report(final_epub_path, output_dir, stem, book_lang)
 
     azw3_path = None
     if generate_azw3:
@@ -155,4 +192,51 @@ def convert_book(
             on_progress=on_progress,
         )
 
-    return ConversionResult(epub_path=final_epub_path, azw3_path=azw3_path)
+    return ConversionResult(
+        epub_path=final_epub_path, azw3_path=azw3_path, lint_report_path=lint_report_path
+    )
+
+
+def _run_grammar_check(
+    current_epub_path: Path,
+    output_dir: Path,
+    stem: str,
+    book_lang: str,
+    on_progress: Callable[[str], None] | None,
+) -> Path:
+    """Roda a etapa de correção gramatical (alta confiança) sobre o EPUB
+    atual, apaga o EPUB que virou intermediário e retorna o caminho do
+    novo EPUB revisado."""
+    checked_path = output_dir / f"{stem}.checked.epub"
+    _run_step(
+        "grammar_check",
+        "Verificando gramática",
+        correct_epub,
+        current_epub_path,
+        checked_path,
+        book_lang,
+        on_progress=on_progress,
+    )
+    current_epub_path.unlink()
+    return checked_path
+
+
+def _write_lint_report(
+    epub_path: Path, output_dir: Path, stem: str, book_lang: str
+) -> Path | None:
+    """Gera o relatório do que sobrou sem correção automática (ver
+    `lint_epub`), salvando em `{stem}.lint.txt` só se houver algo a
+    reportar. Uma falha aqui não deve derrubar uma conversão que já deu
+    certo — só fica sem relatório, com aviso no log."""
+    try:
+        reports = lint_epub(epub_path, lang=book_lang)
+    except Exception:
+        logger.exception("Falha ao gerar relatório de gramática (conversão não é afetada)")
+        return None
+
+    if not reports:
+        return None
+
+    report_path = output_dir / f"{stem}.lint.txt"
+    report_path.write_text(format_lint_report(reports), encoding="utf-8")
+    return report_path
