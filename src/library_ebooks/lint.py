@@ -15,6 +15,10 @@ import language_tool_python
 # pros códigos de idioma do LanguageTool.
 _LANGUAGE_TOOL_CODES = {"pt": "pt-BR", "es": "es", "en": "en-US"}
 
+# Sugestões de estilo são preferência subjetiva de redação, não erro —
+# nunca aplicadas automaticamente, independente de quantas sugestões têm.
+_UNSAFE_ISSUE_TYPES = {"style"}
+
 
 @dataclass
 class GrammarIssue:
@@ -25,6 +29,7 @@ class GrammarIssue:
     message: str
     rule_id: str
     replacements: list[str]
+    issue_type: str
 
 
 def check_text(text: str, lang: str) -> list[GrammarIssue]:
@@ -51,6 +56,47 @@ def check_text(text: str, lang: str) -> list[GrammarIssue]:
             message=match.message,
             rule_id=match.rule_id,
             replacements=match.replacements,
+            issue_type=match.rule_issue_type,
         )
         for match in matches
     ]
+
+
+def _is_high_confidence(issue: GrammarIssue) -> bool:
+    """Considera seguro corrigir automaticamente:
+
+    - Erros ortográficos ("misspelling"): o corretor quase sempre devolve
+      várias sugestões rankeadas mesmo pra erros óbvios (ex.:
+      "concordancia" -> concordância/concordança/...), então usamos a
+      primeira sempre que houver ao menos uma sugestão.
+    - Qualquer outra regra que não seja de estilo (sugestão de estilo é
+      preferência, não erro), desde que tenha uma única sugestão — sem
+      ambiguidade de qual escolher (ex.: concordância simples).
+    """
+    if issue.issue_type == "misspelling":
+        return bool(issue.replacements)
+    if issue.issue_type in _UNSAFE_ISSUE_TYPES:
+        return False
+    return len(issue.replacements) == 1
+
+
+def apply_high_confidence_corrections(
+    text: str, issues: list[GrammarIssue]
+) -> tuple[str, list[GrammarIssue]]:
+    """Aplica automaticamente as correções de alta confiança (ver
+    `_is_high_confidence`) e retorna `(texto_corrigido, problemas_restantes)`.
+
+    Os problemas restantes (ambíguos ou de estilo) não alteram o texto —
+    ficam só pro relatório. Aplicado de trás pra frente (maior offset
+    primeiro) pra uma correção não invalidar o offset das anteriores.
+    """
+    remaining: list[GrammarIssue] = []
+    corrected = text
+    for issue in sorted(issues, key=lambda i: i.offset, reverse=True):
+        if _is_high_confidence(issue):
+            start, end = issue.offset, issue.offset + issue.length
+            corrected = corrected[:start] + issue.replacements[0] + corrected[end:]
+        else:
+            remaining.append(issue)
+    remaining.reverse()  # devolve na ordem de leitura (offset crescente)
+    return corrected, remaining
