@@ -1,15 +1,12 @@
 // Drag-and-drop de PDF (#22) + seleção de idioma/formato (#23) + envio
 // pro /convert com polling de progresso via /progress/{job_id} (#25) +
-// links de download dos arquivos gerados (#24).
+// links de download dos arquivos gerados (#24). Mensagens dinâmicas
+// usam TRANSLATIONS/getUiLang() de i18n.js (idioma da própria interface,
+// carregado antes deste script).
 
-const STEP_LABELS = {
-  queued: "Na fila...",
-  pdf_to_epub: "Convertendo PDF para EPUB...",
-  dehyphenate: "Corrigindo hifenização...",
-  grammar_check: "Verificando gramática...",
-  translate: "Traduzindo...",
-  epub_to_azw3: "Gerando AZW3...",
-};
+function t() {
+  return TRANSLATIONS[getUiLang()] || TRANSLATIONS[DEFAULT_UI_LANG];
+}
 
 const dropzone = document.getElementById("dropzone");
 const fileInput = document.getElementById("file-input");
@@ -25,7 +22,7 @@ const resultDiv = document.getElementById("result");
 
 function showSelectedFile(file) {
   if (file) {
-    selectedFileLabel.textContent = `Selecionado: ${file.name}`;
+    selectedFileLabel.textContent = `${t().selectedFilePrefix}: ${file.name}`;
   }
 }
 
@@ -73,7 +70,7 @@ async function pollProgress(jobId) {
     const data = await response.json();
 
     if (!data.done) {
-      progressEl.textContent = STEP_LABELS[data.step] || data.step;
+      progressEl.textContent = t().steps[data.step] || data.step;
       await sleep(500);
       continue;
     }
@@ -81,13 +78,13 @@ async function pollProgress(jobId) {
     progressEl.textContent = "";
 
     if (data.step === "error") {
-      setResult({ text: `Erro: ${data.detail}`, isError: true });
+      setResult({ text: `${t().errorPrefix}: ${data.detail}`, isError: true });
       return;
     }
 
-    let html = `✓ Conversão concluída: <a href="${data.epub_url}" download>${data.epub}</a>`;
+    let html = `✓ ${t().conversionDone}: <a href="${data.epub_url}" download>${data.epub}</a>`;
     if (data.azw3_url) {
-      html += ` e <a href="${data.azw3_url}" download>${data.azw3}</a>`;
+      html += ` ${t().and} <a href="${data.azw3_url}" download>${data.azw3}</a>`;
     }
     setResult({ html });
     return;
@@ -99,7 +96,7 @@ optionsForm.addEventListener("submit", async (event) => {
 
   const file = fileInput.files[0];
   if (!file) {
-    setResult({ text: "Selecione um PDF antes de converter.", isError: true });
+    setResult({ text: t().selectPdfFirst, isError: true });
     return;
   }
 
@@ -115,7 +112,7 @@ optionsForm.addEventListener("submit", async (event) => {
   formData.append("check_grammar", checkGrammarCheckbox.checked);
 
   setResult({ text: "" });
-  progressEl.textContent = "Enviando...";
+  progressEl.textContent = t().sending;
 
   try {
     const response = await fetch("/convert", { method: "POST", body: formData });
@@ -123,13 +120,13 @@ optionsForm.addEventListener("submit", async (event) => {
 
     if (!response.ok) {
       progressEl.textContent = "";
-      setResult({ text: `Erro: ${data.detail}`, isError: true });
+      setResult({ text: `${t().errorPrefix}: ${data.detail}`, isError: true });
       return;
     }
 
     await pollProgress(data.job_id);
   } catch (error) {
     progressEl.textContent = "";
-    setResult({ text: `Erro: ${error.message}`, isError: true });
+    setResult({ text: `${t().errorPrefix}: ${error.message}`, isError: true });
   }
 });

@@ -319,6 +319,39 @@ def test_index_page_has_progress_indicator(client):
     assert 'id="progress"' in body
 
 
+# Follow-up pós-board: traduzir a própria interface do app pra en/es/pt
+# (diferente do "idioma do livro" / "traduzir para", que são sobre o
+# conteúdo do livro).
+
+
+def test_index_page_has_ui_language_selector(client):
+    body = client.get("/").text
+
+    assert 'id="ui-lang"' in body
+    for lang in ("pt", "en", "es"):
+        assert f'value="{lang}"' in body
+
+
+def test_i18n_js_is_served_with_translations_for_three_languages(client):
+    response = client.get("/i18n.js")
+
+    assert response.status_code == 200
+    body = response.text
+    # marcadores reconhecíveis de cada idioma, pra provar que o texto foi
+    # realmente traduzido, não só a chave duplicada
+    assert "Convert" in body  # en
+    assert "Convertir" in body  # es
+    assert "Converter" in body  # pt
+    assert "localStorage" in body
+
+
+def test_app_js_uses_i18n_dictionary_for_dynamic_messages(client):
+    body = client.get("/app.js").text
+
+    assert "TRANSLATIONS" in body
+    assert "getUiLang" in body
+
+
 def test_app_js_polls_progress_endpoint(client):
     body = (Path(__file__).parent.parent / "src/library_ebooks/static/app.js").read_text()
 

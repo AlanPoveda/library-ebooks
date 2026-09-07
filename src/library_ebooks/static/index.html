@@ -9,11 +9,17 @@
 <body>
   <div class="page">
     <header class="page__header">
+      <select id="ui-lang" class="ui-lang" aria-label="Page language / Idioma da página / Idioma de la página">
+        <option value="pt">PT</option>
+        <option value="en">EN</option>
+        <option value="es">ES</option>
+      </select>
+
       <div class="brand">
         <span class="brand__mark" aria-hidden="true">📚</span>
         <h1>Library Ebooks</h1>
       </div>
-      <p class="subtitle">
+      <p class="subtitle" data-i18n="subtitle">
         Converte PDF em EPUB, corrige hifenização, traduz e revisa gramática —
         tudo local, direto no seu computador.
       </p>
@@ -23,8 +29,8 @@
       <div id="dropzone" class="dropzone">
         <span class="dropzone__icon" aria-hidden="true">📄</span>
         <p class="dropzone__text">
-          Arraste um PDF aqui, ou
-          <button type="button" id="browse-button" class="link-button">escolha um arquivo</button>
+          <span data-i18n="dropzoneText">Arraste um PDF aqui, ou</span>
+          <button type="button" id="browse-button" class="link-button" data-i18n="browseButton">escolha um arquivo</button>
         </p>
         <input type="file" id="file-input" accept=".pdf" hidden />
         <p id="selected-file" class="dropzone__file"></p>
@@ -32,40 +38,40 @@
 
       <form id="options-form" class="options">
         <div class="field">
-          <label for="book-lang">Idioma do livro</label>
+          <label for="book-lang" data-i18n="bookLangLabel">Idioma do livro</label>
           <select id="book-lang">
-            <option value="">não corrigir por dicionário</option>
-            <option value="pt">Português</option>
-            <option value="es">Espanhol</option>
-            <option value="en">Inglês</option>
+            <option value="" data-i18n="bookLangNone">não corrigir por dicionário</option>
+            <option value="pt" data-i18n="optionPt">Português</option>
+            <option value="es" data-i18n="optionEs">Espanhol</option>
+            <option value="en" data-i18n="optionEn">Inglês</option>
           </select>
-          <span class="field__hint">usado pra corrigir hifenização quebrada</span>
+          <span class="field__hint" data-i18n="bookLangHint">usado pra corrigir hifenização quebrada</span>
         </div>
 
         <div class="field">
-          <label for="translate-to">Traduzir para</label>
+          <label for="translate-to" data-i18n="translateToLabel">Traduzir para</label>
           <select id="translate-to">
-            <option value="">não traduzir</option>
-            <option value="pt">Português</option>
-            <option value="es">Espanhol</option>
-            <option value="en">Inglês</option>
+            <option value="" data-i18n="translateToNone">não traduzir</option>
+            <option value="pt" data-i18n="optionPt">Português</option>
+            <option value="es" data-i18n="optionEs">Espanhol</option>
+            <option value="en" data-i18n="optionEn">Inglês</option>
           </select>
-          <span class="field__hint">um livro inteiro pode levar minutos</span>
+          <span class="field__hint" data-i18n="translateToHint">um livro inteiro pode levar minutos</span>
         </div>
 
         <div class="options__toggles">
           <label class="toggle">
             <input type="checkbox" id="generate-azw3" />
-            <span>Gerar também AZW3 (Kindle)</span>
+            <span data-i18n="generateAzw3Label">Gerar também AZW3 (Kindle)</span>
           </label>
 
           <label class="toggle">
             <input type="checkbox" id="check-grammar" />
-            <span>Verificar e corrigir gramática</span>
+            <span data-i18n="checkGrammarLabel">Verificar e corrigir gramática</span>
           </label>
         </div>
 
-        <button type="submit" id="convert-button" class="primary-button">Converter</button>
+        <button type="submit" id="convert-button" class="primary-button" data-i18n="convertButton">Converter</button>
       </form>
 
       <p id="progress" class="progress" role="status"></p>
@@ -73,10 +79,11 @@
     </main>
 
     <footer class="page__footer">
-      <p>Roda 100% local — nenhum arquivo sai do seu computador.</p>
+      <p data-i18n="footer">Roda 100% local — nenhum arquivo sai do seu computador.</p>
     </footer>
   </div>
 
+  <script src="/i18n.js"></script>
   <script src="/app.js"></script>
 </body>
 </html>
